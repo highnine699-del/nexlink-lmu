@@ -1,0 +1,5 @@
+﻿lmu_portal.cred
+lmu_autoconnect.log
+*.log
+bin/
+obj/
