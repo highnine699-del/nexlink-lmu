@@ -115,6 +115,7 @@ $LogFile = Join-Path $ScriptDir "lmu_autoconnect.log"
 
 $script:wifiFailCount = 0
 $script:portalFailCount = 0
+$script:portalUnknownCount = 0
 $script:LastKnownSSID = $null
 $script:secondsToNextCheck = $CheckIntervalMs / 1000
 $script:PortalRetryAfter = [DateTime]::MinValue
@@ -807,6 +808,7 @@ $timer.Add_Tick({
                     Add-Log "Portal login submitted via '$($result.Url)' (AlreadyLoggedIn=$($result.AlreadyLoggedIn))"
                     $script:portalFailCount = 0
                     $script:wifiFailCount = 0
+                    $script:portalUnknownCount = 0
                     $script:PortalRetryAfter = [DateTime]::MinValue
                 }
                 catch {
@@ -821,20 +823,29 @@ $timer.Add_Tick({
         elseif ($portalStatus -eq 'Active') {
             $script:wifiFailCount = 0
             $script:portalFailCount = 0
+            $script:portalUnknownCount = 0
             $script:PortalRetryAfter = [DateTime]::MinValue
             $script:PortalCooldownShown = $false
         }
         else {
+            # 'Unknown' - can't even reach the connectivity-check endpoint.
+            # Ping alone succeeding doesn't mean much if this keeps failing;
+            # some networks allow ICMP but throttle/block specific HTTP
+            # endpoints. Escalate after repeated Unknowns instead of waiting
+            # forever with no action.
+            $script:portalUnknownCount++
+            Add-Log "Portal status Unknown ($script:portalUnknownCount/$WifiFailsBeforeFix) - can't reach connectivity-check endpoint"
             $script:PortalRetryAfter = [DateTime]::MinValue
             $script:PortalCooldownShown = $false
         }
 
-        if ($script:wifiFailCount -ge $WifiFailsBeforeFix -or $script:portalFailCount -ge $WifiFailsBeforeFix) {
+        if ($script:wifiFailCount -ge $WifiFailsBeforeFix -or $script:portalFailCount -ge $WifiFailsBeforeFix -or $script:portalUnknownCount -ge $WifiFailsBeforeFix) {
             Set-Status "Reconnecting..." "Reconnecting"
             $ssid = Restart-WifiConnection
             Add-Log "Wi-Fi reconnect attempted (SSID: $ssid)"
             $script:wifiFailCount = 0
             $script:portalFailCount = 0
+            $script:portalUnknownCount = 0
         }
         elseif ($portalStatus -eq 'Active') {
             Set-Status "You're connected" "Connected"
