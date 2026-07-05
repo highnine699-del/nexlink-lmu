@@ -89,7 +89,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ---- Settings ----
-$NexLinkVersion = "1.1.0"
+$NexLinkVersion = "1.2.0"
 $PingTarget = "8.8.8.8"
 $TestPageUrl = "http://www.msftconnecttest.com/connecttest.txt"
 $ExpectedOnlineText = "Microsoft Connect Test"
@@ -130,6 +130,8 @@ $script:PortalCooldownShown = $false
 $script:LastReconnectAt = [DateTime]::MinValue
 $script:PortalSession = $null
 $script:LastLogTrimAt = Get-Date
+$script:LastLoggedStatus = ""
+$script:LastHealthyLogAt = [DateTime]::MinValue
 
 # ---------- Credential handling ----------
 function Save-PortalCredential {
@@ -157,18 +159,22 @@ function Save-PortalCredential {
         $encryptedPass = ConvertFrom-SecureString $secure
         try {
             @{ Username = $txtUser.Text; Password = $encryptedPass } | ConvertTo-Json | Set-Content -Path $CredFile -Encoding UTF8
+            Add-Log "Credentials saved for user '$($txtUser.Text)' (password stored encrypted, never logged)."
             return $true
         }
         catch {
+            Add-Log "FAILED to save credentials: $($_.Exception.Message)"
             [System.Windows.Forms.MessageBox]::Show("Unable to save credentials: $($_.Exception.Message)", "NexLink") | Out-Null
             return $false
         }
     }
+    Add-Log "Credential entry cancelled or incomplete."
     return $false
 }
 
 function Get-PortalCredential {
     if (-not (Test-Path $CredFile)) {
+        Add-Log "No credential file found at '$CredFile' - prompting for portal login."
         if (-not (Save-PortalCredential)) {
             [System.Windows.Forms.MessageBox]::Show("No credentials entered. Exiting.", "NexLink") | Out-Null
             exit
@@ -179,11 +185,13 @@ function Get-PortalCredential {
         $data = Get-Content $CredFile -Raw | ConvertFrom-Json
     }
     catch {
+        Add-Log "Credential file is unreadable or corrupt: $($_.Exception.Message)"
         [System.Windows.Forms.MessageBox]::Show("Credential file is unreadable or corrupt. Delete $CredFile and run again.", "NexLink") | Out-Null
         exit
     }
 
     if (-not $data.Username -or -not $data.Password) {
+        Add-Log "Credential file is missing username or password field."
         [System.Windows.Forms.MessageBox]::Show("Credential file is missing required values.", "NexLink") | Out-Null
         exit
     }
@@ -192,6 +200,7 @@ function Get-PortalCredential {
         $securePass = ConvertTo-SecureString $data.Password
     }
     catch {
+        Add-Log "Saved password could not be decrypted (DPAPI mismatch - different user/machine?): $($_.Exception.Message)"
         [System.Windows.Forms.MessageBox]::Show("Saved password could not be decrypted. Delete $CredFile and create it again.", "NexLink") | Out-Null
         exit
     }
@@ -313,32 +322,51 @@ function Restart-WifiConnection {
     $targetSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
     if (-not $targetSsid) { $targetSsid = $script:LastKnownSSID }
     if (-not $targetSsid) { $targetSsid = $currentWifiState.SSID }
-    if ($targetSsid -and -not (Test-WifiSwitchNeeded -TargetSsid $targetSsid -CurrentWifiState $currentWifiState)) { return $currentWifiState.SSID }
+    Add-Log "Restart-WifiConnection: current='$($currentWifiState.SSID)' ($($currentWifiState.Signal)%), target='$targetSsid'"
+    if ($targetSsid -and -not (Test-WifiSwitchNeeded -TargetSsid $targetSsid -CurrentWifiState $currentWifiState)) {
+        Add-Log "Restart-WifiConnection: switch not needed/allowed right now (cooldown or same network), skipping."
+        return $currentWifiState.SSID
+    }
 
+    Add-Log "Disconnecting current Wi-Fi connection..."
     netsh wlan disconnect 2>$null | Out-Null
     Start-Sleep -Seconds 2
     if ($targetSsid) {
+        Add-Log "Attempting to connect to '$targetSsid'..."
         if (Connect-ToWifiNetwork -Ssid $targetSsid) {
+            Add-Log "Connected to '$targetSsid' successfully. Flushing DNS and resetting portal session."
             Clear-DnsCache
             $script:LastKnownSSID = $targetSsid
             $script:LastReconnectAt = Get-Date
             $script:PortalSession = $null
         }
         else {
+            Add-Log "netsh connect to '$targetSsid' failed. Falling back to power-cycling the adapter."
             $adapter = Get-WifiAdapter
             if ($adapter) {
+                Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
                 Disable-NetAdapter -Name $adapter.Name -Confirm:$false
                 Start-Sleep -Seconds 2
                 Enable-NetAdapter -Name $adapter.Name -Confirm:$false
+                Add-Log "Adapter '$($adapter.Name)' re-enabled."
+            }
+            else {
+                Add-Log "No Wi-Fi adapter found to power-cycle."
             }
         }
     }
     else {
+        Add-Log "No target SSID available at all (not even a last-known one). Power-cycling adapter as a last resort."
         $adapter = Get-WifiAdapter
         if ($adapter) {
+            Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
             Disable-NetAdapter -Name $adapter.Name -Confirm:$false
             Start-Sleep -Seconds 2
             Enable-NetAdapter -Name $adapter.Name -Confirm:$false
+            Add-Log "Adapter '$($adapter.Name)' re-enabled."
+        }
+        else {
+            Add-Log "No Wi-Fi adapter found to power-cycle."
         }
     }
     Start-Sleep -Seconds 3
@@ -358,12 +386,15 @@ function Test-PortalSession {
         if ($content -eq $ExpectedOnlineText) { return 'Active' }
         # Any other content on this URL means something (the router) intercepted
         # the request and served its own page instead of the real one - that's the portal.
+        $preview = $content.Substring(0, [Math]::Min(120, $content.Length)) -replace '[\r\n]+', ' '
+        Add-Log "Portal check returned unexpected content (first 120 chars): $preview"
         return 'LoggedOut'
     }
     catch {
         # Could not even connect - either genuinely offline or the router is
         # blackholing traffic rather than redirecting it. Treat as unknown so
         # we don't hammer a login POST when we can't reach it anyway.
+        Add-Log "Portal connectivity check failed to connect: $($_.Exception.Message)"
         return 'Unknown'
     }
 }
@@ -628,16 +659,23 @@ $timer.Add_Tick({
             $pingOk = Test-Connection -ComputerName $PingTarget -Count 1 -Quiet -ErrorAction SilentlyContinue
 
             if ($pingOk) {
+                if ($script:wifiFailCount -gt 0) {
+                    Add-Log "Ping recovered after $script:wifiFailCount failure(s)."
+                }
                 $script:wifiFailCount = 0
                 Update-KnownSSID | Out-Null
             }
             else {
                 $script:wifiFailCount++
-                Add-Log "Ping failed ($script:wifiFailCount/$WifiFailsBeforeFix)"
+                Add-Log "Ping failed ($script:wifiFailCount/$WifiFailsBeforeFix) - target=$PingTarget"
                 Set-Status "Checking connection..." ([System.Drawing.Color]::Orange)
             }
 
             $portalStatus = Test-PortalSession
+            # Full diagnostic summary every single cycle, regardless of outcome -
+            # this is what makes "nothing is logged while it's working fine"
+            # impossible. Every check produces a line.
+            Add-Log "[Check] Ping=$(if ($pingOk) {'OK'} else {'FAIL'}) Portal=$portalStatus SSID='$($currentWifiState.SSID)' Signal=$($currentWifiState.Signal)% Interval=$($timer.Interval)ms"
             if ($portalStatus -eq 'LoggedOut') {
                 $now = Get-Date
                 if ($script:PortalRetryAfter -gt $now) {
@@ -688,6 +726,19 @@ $timer.Add_Tick({
             }
             elseif ($portalStatus -eq 'Active') {
                 Set-Status "Connected & Logged In" ([System.Drawing.Color]::SeaGreen)
+                $now2 = Get-Date
+                if ($script:LastLoggedStatus -ne 'Active') {
+                    Add-Log "Connected & Logged In (SSID: $($currentWifiState.SSID))"
+                    $script:LastLoggedStatus = 'Active'
+                    $script:LastHealthyLogAt = $now2
+                }
+                elseif (($now2 - $script:LastHealthyLogAt).TotalMinutes -ge 10) {
+                    Add-Log "Still connected & logged in (heartbeat, SSID: $($currentWifiState.SSID))"
+                    $script:LastHealthyLogAt = $now2
+                }
+            }
+            else {
+                $script:LastLoggedStatus = ""
             }
 
             if ($script:portalFailCount -ge 2) {
@@ -706,10 +757,15 @@ $timer.Add_Tick({
 
 $form.Add_Shown({
         Limit-LogFile
-        Add-Log "Monitor started. Checking every $($CheckIntervalMs / 1000)s."
+        $osInfo = try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).Caption } catch { "unknown OS" }
+        $adapterInfo = Get-WifiAdapter
+        $adapterDesc = if ($adapterInfo) { "$($adapterInfo.Name) - $($adapterInfo.InterfaceDescription)" } else { "NOT FOUND" }
+        Add-Log "===== Monitor started. Checking every $($CheckIntervalMs / 1000)s. ====="
+        Add-Log "Version=$NexLinkVersion OS='$osInfo' Adapter='$adapterDesc'"
         Get-PortalCredential | Out-Null
         Update-KnownSSID | Out-Null
         $currentWifiState = Get-CurrentWifiState
+        Add-Log "Startup Wi-Fi state: SSID='$($currentWifiState.SSID)' Signal=$($currentWifiState.Signal)%"
         $bestSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
         $currentSsid = $currentWifiState.SSID
         if ($bestSsid -and $currentSsid -and $currentSsid -ne $bestSsid) {
