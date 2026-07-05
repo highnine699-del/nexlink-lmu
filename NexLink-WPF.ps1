@@ -577,20 +577,20 @@ $window.Add_MouseMove({
     }
 })
 
-# Close button
+# Close button - behaves like minimize (sends to tray), matching standard
+# background-app convention (Discord, Spotify, etc). Real exit only via the
+# tray icon's right-click "Exit" menu item below.
 $closeBtn.Add_Click({
-    $script:allowExit = $true
-    $timer.Stop()
-    $trayIcon.Visible = $false
-    try { $script:InstanceMutex.ReleaseMutex() } catch {}
-    $window.Close()
+    $window.WindowState = [System.Windows.WindowState]::Minimized
+    $window.Hide()
+    $trayIcon.ShowBalloonTip(2500, "NexLink", "Still running - look for this icon in your system tray (click the ^ arrow if you don't see it).", [System.Windows.Forms.ToolTipIcon]::Info)
 })
 
 # Minimize button
 $minimizeBtn.Add_Click({
     $window.WindowState = [System.Windows.WindowState]::Minimized
     $window.Hide()
-    $trayIcon.ShowBalloonTip(1500, "NexLink", "Running quietly in background", [System.Windows.Forms.ToolTipIcon]::Info)
+    $trayIcon.ShowBalloonTip(2500, "NexLink", "Still running - look for this icon in your system tray (click the ^ arrow if you don't see it).", [System.Windows.Forms.ToolTipIcon]::Info)
 })
 
 # ---------- Logging Functions ----------
@@ -746,6 +746,7 @@ $menuExit.Add_Click({
     $trayIcon.Visible = $false
     try { $script:InstanceMutex.ReleaseMutex() } catch {}
     $window.Close()
+    [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
 })
 
 # ---------- Timer-driven check loop ----------
@@ -901,6 +902,7 @@ $window.Add_Loaded({
         Add-Log "Starting on '$currentSsid'; switching to preferred network '$bestSsid'"
         Restart-WifiConnection | Out-Null
     }
+    $trayIcon.ShowBalloonTip(4000, "NexLink is running", "Look for this icon in your system tray. If you don't see it, click the small ^ arrow next to your other tray icons.", [System.Windows.Forms.ToolTipIcon]::Info)
     $timer.Start()
 })
 
@@ -1006,4 +1008,14 @@ $settingsBtn.Add_Click({
 })
 
 # ---------- Show Window ----------
-$window.ShowDialog() | Out-Null
+$window.Add_Closed({
+    # Safety net: if the window closes through any path we haven't
+    # explicitly handled (Alt+F4, system menu, etc.), still clean up
+    # properly instead of leaving a zombie process or orphaned tray icon.
+    $timer.Stop()
+    $trayIcon.Visible = $false
+    try { $script:InstanceMutex.ReleaseMutex() } catch {}
+    [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+})
+$window.Show()
+[System.Windows.Threading.Dispatcher]::Run()
