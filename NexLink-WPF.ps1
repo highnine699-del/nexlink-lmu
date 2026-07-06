@@ -81,7 +81,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.2.7"
+$NexLinkVersion = "1.2.9"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -525,6 +525,10 @@ Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Xaml
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -Name Win32ForegroundHelper -Namespace NexLink -MemberDefinition '
+[DllImport("user32.dll")]
+public static extern bool AllowSetForegroundWindow(int dwProcessId);
+'
 
 # XAML for the main window
 $xaml = @"
@@ -1120,15 +1124,20 @@ $advCloseBtn.Add_Click({
 
 # Re-enter credentials
 $reenterCredBtn.Add_Click({
-    Remove-Item $CredFile -ErrorAction SilentlyContinue
-    Get-PortalCredential | Out-Null
-    Add-Log "Credentials re-entered by user."
-    [System.Windows.Forms.MessageBox]::Show("Credentials updated successfully.", "NexLink") | Out-Null
+    if (Save-PortalCredential) {
+        $script:PortalSession = $null
+        Add-Log "Credentials re-entered by user."
+        [System.Windows.Forms.MessageBox]::Show("Credentials updated successfully.", "NexLink") | Out-Null
+    }
+    else {
+        Add-Log "Credential re-entry cancelled by user - existing credentials unchanged, app continues running."
+    }
 })
 
 # Open log file
 $openLogBtn.Add_Click({
     if (Test-Path $LogFile) {
+        [NexLink.Win32ForegroundHelper]::AllowSetForegroundWindow(-1) | Out-Null
         Start-Process notepad.exe $LogFile
     }
     else {

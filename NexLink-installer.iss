@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=NexLink
-AppVersion=1.2.7.0
+AppVersion=1.2.9.0
 DefaultDirName={pf}\NexLink
 DefaultGroupName=NexLink
 OutputBaseFilename=NexLink-Installer
