@@ -81,7 +81,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.2.6"
+$NexLinkVersion = "1.2.7"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -660,6 +660,8 @@ $settingsBtn = $window.FindName("SettingsBtn")
 $updateBanner = $window.FindName("UpdateBanner")
 $updateBannerText = $window.FindName("UpdateBannerText")
 $updateRestartBtn = $window.FindName("UpdateRestartBtn")
+$versionText = $window.FindName("VersionText")
+$versionText.Text = "v$NexLinkVersion"
 $minimizeBtn = $window.FindName("MinimizeBtn")
 $closeBtn = $window.FindName("CloseBtn")
 $pulseStoryboard = $window.FindName("PulseStoryboard")
@@ -1103,6 +1105,8 @@ $advLogViewer = $advWindow.FindName("LogViewer")
 $advCloseBtn = $advWindow.FindName("AdvCloseBtn")
 $reenterCredBtn = $advWindow.FindName("ReenterCredBtn")
 $openLogBtn = $advWindow.FindName("OpenLogBtn")
+$advVersionText = $advWindow.FindName("AdvVersionText")
+$advVersionText.Text = "v$NexLinkVersion"
 
 # Advanced window dragging
 $advWindow.Add_MouseLeftButtonDown({
