@@ -81,7 +81,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.2.5"
+$NexLinkVersion = "1.2.6"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -234,7 +234,8 @@ function Test-ForUpdate {
     if (-not $UpdateCheckEnabled) { return $null }
     try {
         $resp = Invoke-WebRequest -Uri $UpdateManifestUrl -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
-        $manifest = $resp.Content | ConvertFrom-Json -ErrorAction Stop
+        $rawContent = $resp.Content.TrimStart([char]0xFEFF, [char]0x200B).Trim()
+        $manifest = $rawContent | ConvertFrom-Json -ErrorAction Stop
         if (-not $manifest.version -or -not $manifest.installer_url -or -not $manifest.sha256) {
             Add-Log "Update check: manifest is missing required fields, ignoring."
             return $null
