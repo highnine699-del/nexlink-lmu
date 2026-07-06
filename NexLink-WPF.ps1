@@ -18,6 +18,15 @@ $ErrorActionPreference = 'Stop'
 # message loop - freezing the whole app. Suppress it entirely.
 $ProgressPreference = 'SilentlyContinue'
 
+# ---------- Graceful exit signal ----------
+# release.ps1 runs unelevated, but NexLink.exe runs elevated (-requireAdmin),
+# so Stop-Process from release.ps1 fails with Access Denied and window
+# messages are blocked by UIPI across the elevation boundary. File I/O isn't
+# blocked though, so release.ps1 drops this file to ask for a graceful exit,
+# and the timer loop below polls for it every tick.
+$script:ExitSignalFile = Join-Path $env:TEMP "NexLink.exitsignal"
+Remove-Item $script:ExitSignalFile -ErrorAction SilentlyContinue
+
 # ---------- Single-instance guard ----------
 # Prevents two copies (e.g. a manual .ps1 run plus the .exe) from running at
 # once and hammering the login endpoint independently of each other.
@@ -81,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.1"
+$NexLinkVersion = "1.3.2"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -1078,20 +1087,27 @@ $menuDisconnect.Add_Click({
     }
 })
 
-$menuExit.Add_Click({
+function Invoke-GracefulExit {
     $script:allowExit = $true
     $timer.Stop()
     $trayIcon.Visible = $false
     try { $script:InstanceMutex.ReleaseMutex() } catch {}
+    Remove-Item $script:ExitSignalFile -ErrorAction SilentlyContinue
     $window.Close()
     [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
-})
+}
+
+$menuExit.Add_Click({ Invoke-GracefulExit })
 
 # ---------- Timer-driven check loop ----------
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
 
 $timer.Add_Tick({
+    if (Test-Path $script:ExitSignalFile) {
+        Invoke-GracefulExit
+        return
+    }
     if ($script:ManuallyDisconnected) { return }
     $script:secondsToNextCheck = $CheckIntervalMs / 1000
     if (((Get-Date) - $script:LastLogTrimAt).TotalHours -ge 1) {
