@@ -81,7 +81,9 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.2.0"
+$NexLinkVersion = "1.2.5"
+$UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
+$UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
 $TestPageUrl = "http://www.msftconnecttest.com/connecttest.txt"
 $ExpectedOnlineText = "Microsoft Connect Test"
@@ -125,6 +127,8 @@ $script:PortalSession = $null
 $script:LastLogTrimAt = Get-Date
 $script:LastLoggedStatus = ""
 $script:LastHealthyLogAt = [DateTime]::MinValue
+$script:LastUpdateCheckAt = [DateTime]::MinValue
+$script:PendingUpdateManifest = $null
 
 # ---------- Credential handling ----------
 function Save-PortalCredential {
@@ -220,6 +224,91 @@ function Clear-DnsCache {
         ipconfig /flushdns | Out-Null
     }
     catch {}
+}
+
+function Test-ForUpdate {
+    # Fully defensive by design: any failure here (network, bad JSON,
+    # malformed version string) must be swallowed silently and never
+    # affect the rest of the app. This function only ever returns a
+    # manifest object when a genuinely newer version is confirmed.
+    if (-not $UpdateCheckEnabled) { return $null }
+    try {
+        $resp = Invoke-WebRequest -Uri $UpdateManifestUrl -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
+        $manifest = $resp.Content | ConvertFrom-Json -ErrorAction Stop
+        if (-not $manifest.version -or -not $manifest.installer_url -or -not $manifest.sha256) {
+            Add-Log "Update check: manifest is missing required fields, ignoring."
+            return $null
+        }
+        $remoteVersion = [version]$manifest.version
+        $currentVersion = [version]$NexLinkVersion
+        if ($remoteVersion -gt $currentVersion) {
+            Add-Log "Update check: v$($manifest.version) is available (current: v$NexLinkVersion)."
+            return $manifest
+        }
+        else {
+            Add-Log "Update check: up to date (v$NexLinkVersion)."
+            return $null
+        }
+    }
+    catch {
+        Add-Log "Update check failed (non-fatal, app continues normally): $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Start-NexLinkUpdate($manifest) {
+    # CRITICAL ORDERING: download + hash verification happen BEFORE anything
+    # about the currently running app is touched. If either step fails, we
+    # return early and the running app is completely unaffected - it never
+    # even knows an update attempt was made, beyond the log entry.
+    $tempInstaller = Join-Path $env:TEMP "NexLink-Update-$($manifest.version).exe"
+    try {
+        Add-Log "Downloading update v$($manifest.version)..."
+        Invoke-WebRequest -Uri $manifest.installer_url -OutFile $tempInstaller -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+    }
+    catch {
+        Add-Log "Update download FAILED (app unaffected, still running normally): $($_.Exception.Message)"
+        [System.Windows.MessageBox]::Show("Couldn't download the update. Your current version is unaffected and still running.`n`n$($_.Exception.Message)", "NexLink Update") | Out-Null
+        Remove-Item $tempInstaller -ErrorAction SilentlyContinue
+        return
+    }
+
+    try {
+        $actualHash = (Get-FileHash -Path $tempInstaller -Algorithm SHA256 -ErrorAction Stop).Hash
+        if ($actualHash -ne $manifest.sha256.ToUpper()) {
+            Add-Log "Update verification FAILED - hash mismatch. Aborting update, current app unaffected. Expected=$($manifest.sha256) Actual=$actualHash"
+            [System.Windows.MessageBox]::Show("The downloaded update failed verification and will NOT be installed. Your current version is unaffected and still running.", "NexLink Update - Verification Failed") | Out-Null
+            Remove-Item $tempInstaller -ErrorAction SilentlyContinue
+            return
+        }
+        Add-Log "Update verified (SHA256 match). Proceeding with install."
+    }
+    catch {
+        Add-Log "Update verification could not be completed (app unaffected, still running normally): $($_.Exception.Message)"
+        Remove-Item $tempInstaller -ErrorAction SilentlyContinue
+        return
+    }
+
+    # Only past this point do we touch the running app's state at all.
+    $exePath = Join-Path $ScriptDir "NexLink.exe"
+    try {
+        Add-Log "Shutting down for update to v$($manifest.version)..."
+        $timer.Stop()
+        $trayIcon.Visible = $false
+        try { $script:InstanceMutex.ReleaseMutex() } catch {}
+
+        Start-Process -FilePath $tempInstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+
+        if (Test-Path $exePath) {
+            Start-Process -FilePath $exePath
+        }
+        Remove-Item $tempInstaller -ErrorAction SilentlyContinue
+        [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+    }
+    catch {
+        Add-Log "Update install step failed: $($_.Exception.Message)"
+        [System.Windows.MessageBox]::Show("The update installer failed to run. Please download and run it manually from GitHub.`n`n$($_.Exception.Message)", "NexLink Update") | Out-Null
+    }
 }
 
 function Get-CurrentWifiState {
@@ -516,9 +605,28 @@ $xaml = @"
                 </Button.Template>
             </Button>
             
+            <!-- Update banner - hidden unless an update is actually found -->
+            <Border Name="UpdateBanner" Background="#14171F" CornerRadius="10"
+                    VerticalAlignment="Bottom" Margin="16,0,16,44" Padding="10,8"
+                    Visibility="Collapsed" BorderBrush="#06B6D4" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Name="UpdateBannerText" Grid.Column="0" Text="Update available"
+                               FontFamily="Segoe UI" FontSize="11" Foreground="#F5F5F7"
+                               VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    <Button Name="UpdateRestartBtn" Grid.Column="1" Content="Restart to Update"
+                            FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
+                            Background="#06B6D4" Foreground="White" BorderThickness="0"
+                            Padding="8,4" Cursor="Hand" Margin="8,0,0,0"/>
+                </Grid>
+            </Border>
+
             <!-- Footer -->
             <Grid Height="30" VerticalAlignment="Bottom" Margin="16,0,16,8">
-                <TextBlock Name="VersionText" Text="v1.2.0" 
+                <TextBlock Name="VersionText" Text="v1.2.4" 
                            FontFamily="Segoe UI" FontSize="10" 
                            Foreground="#6B7280" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                 <Button Name="SettingsBtn" Content="⚙" Width="24" Height="24" 
@@ -548,6 +656,9 @@ $statusText = $window.FindName("StatusText")
 $networkName = $window.FindName("NetworkName")
 $actionButton = $window.FindName("ActionButton")
 $settingsBtn = $window.FindName("SettingsBtn")
+$updateBanner = $window.FindName("UpdateBanner")
+$updateBannerText = $window.FindName("UpdateBannerText")
+$updateRestartBtn = $window.FindName("UpdateRestartBtn")
 $minimizeBtn = $window.FindName("MinimizeBtn")
 $closeBtn = $window.FindName("CloseBtn")
 $pulseStoryboard = $window.FindName("PulseStoryboard")
@@ -760,6 +871,15 @@ $timer.Add_Tick({
         Limit-LogFile
         $script:LastLogTrimAt = Get-Date
     }
+    if (-not $script:PendingUpdateManifest -and ((Get-Date) - $script:LastUpdateCheckAt).TotalHours -ge 24) {
+        $script:LastUpdateCheckAt = Get-Date
+        $foundUpdate = Test-ForUpdate
+        if ($foundUpdate) {
+            $script:PendingUpdateManifest = $foundUpdate
+            $updateBannerText.Text = "v$($foundUpdate.version) is available"
+            $updateBanner.Visibility = [System.Windows.Visibility]::Visible
+        }
+    }
     try {
         $currentWifiState = Get-CurrentWifiState
         $targetSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
@@ -904,6 +1024,17 @@ $window.Add_Loaded({
     }
     $trayIcon.ShowBalloonTip(4000, "NexLink is running", "Look for this icon in your system tray. If you don't see it, click the small ^ arrow next to your other tray icons.", [System.Windows.Forms.ToolTipIcon]::Info)
     $timer.Start()
+
+    # Update check runs last, after the core monitor is already active.
+    # A slow or failed network check here can never delay or block the
+    # app's actual job of keeping you connected.
+    $script:LastUpdateCheckAt = Get-Date
+    $foundUpdate = Test-ForUpdate
+    if ($foundUpdate) {
+        $script:PendingUpdateManifest = $foundUpdate
+        $updateBannerText.Text = "v$($foundUpdate.version) is available"
+        $updateBanner.Visibility = [System.Windows.Visibility]::Visible
+    }
 })
 
 # ---------- Advanced Panel ----------
@@ -949,7 +1080,7 @@ $advancedXaml = @"
             </StackPanel>
             
             <!-- Version -->
-            <TextBlock Name="AdvVersionText" Text="v1.2.0" 
+            <TextBlock Name="AdvVersionText" Text="v1.2.4" 
                        FontFamily="Segoe UI" FontSize="9" 
                        Foreground="#6B7280" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12,0,0,8"/>
         </Grid>
@@ -1001,6 +1132,19 @@ $openLogBtn.Add_Click({
 })
 
 # Update log viewer when advanced panel opens
+$updateRestartBtn.Add_Click({
+    if ($script:PendingUpdateManifest) {
+        $updateRestartBtn.IsEnabled = $false
+        $updateRestartBtn.Content = "Updating..."
+        Start-NexLinkUpdate $script:PendingUpdateManifest
+        # If we reach this line, the update did NOT proceed (download or
+        # verification failed) - Start-NexLinkUpdate already logged why and
+        # showed the user a message. Re-enable the button so they can retry.
+        $updateRestartBtn.IsEnabled = $true
+        $updateRestartBtn.Content = "Restart to Update"
+    }
+})
+
 $settingsBtn.Add_Click({
     $advLogViewer.Text = $script:logLines -join "`r`n"
     $advLogViewer.ScrollToEnd()
