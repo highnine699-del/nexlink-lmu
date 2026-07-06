@@ -81,7 +81,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.2.9"
+$NexLinkVersion = "1.3.1"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -525,6 +525,7 @@ Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Xaml
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type -Name Win32ForegroundHelper -Namespace NexLink -MemberDefinition '
 [DllImport("user32.dll")]
 public static extern bool AllowSetForegroundWindow(int dwProcessId);
@@ -631,7 +632,7 @@ $xaml = @"
 
             <!-- Footer -->
             <Grid Height="30" VerticalAlignment="Bottom" Margin="16,0,16,8">
-                <TextBlock Name="VersionText" Text="v1.2.4" 
+                <TextBlock Name="VersionText" Text="v1.3.0" 
                            FontFamily="Segoe UI" FontSize="10" 
                            Foreground="#6B7280" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                 <Button Name="SettingsBtn" Content="⚙" Width="24" Height="24" 
@@ -742,31 +743,250 @@ function Limit-LogFile {
     catch {}
 }
 
+# ---------- Pro License Functions ----------
+# Embedded ECDSA public key for license verification (safe to expose)
+# This is the public key corresponding to the private key in the Cloudflare Worker
+# MANUAL ACTION REQUIRED: After generating ECDSA keys, replace the placeholder values below
+# with the actual x and y coordinates from ecdsa_public_key.json
+$script:ProPublicKey = @{
+    curve = "P-256"
+    x = "yg0VaTuX8pv8kJlfoFIOXFDdgW2vhipwb8sQjb1QlNw="
+    y = "uYyJ9dNVOTu3HiTerRBEojxnGSend6kgMJgeb4W6rG8="
+}
+
+$script:ProLicenseFile = Join-Path $ScriptDir "nexlink_pro_license.cred"
+$script:IsProLicensed = $false
+
+function Get-ProLicense {
+    try {
+        if (-not (Test-Path $script:ProLicenseFile)) { return $null }
+        $cred = Import-Clixml -Path $script:ProLicenseFile
+        return $cred
+    }
+    catch {
+        return $null
+    }
+}
+
+function Save-ProLicense($licenseKey) {
+    try {
+        $licenseKey | Export-Clixml -Path $script:ProLicenseFile -Force
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Verify-ProLicense($licenseKey) {
+    if (-not $licenseKey -or $licenseKey.Trim() -eq "") { return $false }
+    $parts = $licenseKey.Trim().Split(".")
+    if ($parts.Count -ne 2) { return $false }
+
+    try {
+        $referenceBytes = [Convert]::FromBase64String($parts[0])
+        $signatureBytes = [Convert]::FromBase64String($parts[1])
+        $reference = [System.Text.Encoding]::UTF8.GetString($referenceBytes)
+
+        $X = [Convert]::FromBase64String($script:ProPublicKey.x)
+        $Y = [Convert]::FromBase64String($script:ProPublicKey.y)
+        $magicBytes = [BitConverter]::GetBytes([UInt32]0x31534345)
+        $keySizeBytes = [BitConverter]::GetBytes([UInt32]32)
+        $blob = $magicBytes + $keySizeBytes + $X + $Y
+
+        $cngKey = [System.Security.Cryptography.CngKey]::Import($blob, [System.Security.Cryptography.CngKeyBlobFormat]::EccPublicBlob)
+        $ecdsa = New-Object System.Security.Cryptography.ECDsaCng($cngKey)
+
+        $messageBytes = [System.Text.Encoding]::UTF8.GetBytes($reference)
+        $isValid = $ecdsa.VerifyData($messageBytes, $signatureBytes, [System.Security.Cryptography.HashAlgorithmName]::SHA256)
+        $ecdsa.Dispose()
+        $cngKey.Dispose()
+
+        if ($isValid) {
+            Add-Log "License verified for reference: $reference"
+        }
+        return $isValid
+    }
+    catch {
+        Add-Log "License verification error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Show-LicenseInputDialog {
+    $licenseKey = [Microsoft.VisualBasic.Interaction]::InputBox(
+        "Enter your NexLink Pro license key:",
+        "NexLink Pro License",
+        "",
+        -1, -1
+    )
+    
+    if ($licenseKey -and $licenseKey.Trim() -ne "") {
+        if (Verify-ProLicense $licenseKey) {
+            if (Save-ProLicense $licenseKey) {
+                $script:IsProLicensed = $true
+                Add-Log "Pro license activated successfully."
+                [System.Windows.Forms.MessageBox]::Show("Pro license activated successfully!", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+            }
+            else {
+                Add-Log "Failed to save Pro license."
+                [System.Windows.Forms.MessageBox]::Show("Failed to save license key.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+            }
+        }
+        else {
+            Add-Log "Invalid Pro license key provided."
+            [System.Windows.Forms.MessageBox]::Show("Invalid license key. Please check and try again.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+    }
+}
+
+# Check for existing Pro license on startup
+$savedLicense = Get-ProLicense
+if ($savedLicense -and (Verify-ProLicense $savedLicense)) {
+    $script:IsProLicensed = $true
+    Add-Log "Pro license detected and valid."
+}
+
+# Theme definitions
+$script:Themes = @{
+    "Cyberpunk" = @{
+        Background = "#0B0D13"
+        TitleBar = "#14171F"
+        AccentStart = "#7C3AED"
+        AccentEnd = "#06B6D4"
+        StatusConnected = "#22D3AA"
+        StatusReconnecting = "#FBBF24"
+        StatusError = "#F43F5E"
+        StatusOffline = "#6B7280"
+    }
+    "Sunset" = @{
+        Background = "#1A1414"
+        TitleBar = "#2D1F1F"
+        AccentStart = "#F97316"
+        AccentEnd = "#EC4899"
+        StatusConnected = "#22D3AA"
+        StatusReconnecting = "#FBBF24"
+        StatusError = "#F43F5E"
+        StatusOffline = "#6B7280"
+    }
+    "Midnight" = @{
+        Background = "#0F172A"
+        TitleBar = "#1E293B"
+        AccentStart = "#3B82F6"
+        AccentEnd = "#6366F1"
+        StatusConnected = "#22D3AA"
+        StatusReconnecting = "#FBBF24"
+        StatusError = "#F43F5E"
+        StatusOffline = "#6B7280"
+    }
+}
+
+$script:CurrentTheme = "Cyberpunk"
+$script:ThemeFile = Join-Path $ScriptDir "nexlink_theme.txt"
+
+# Load saved theme preference
+if (Test-Path $script:ThemeFile) {
+    $savedTheme = Get-Content $script:ThemeFile -ErrorAction SilentlyContinue
+    if ($script:Themes.ContainsKey($savedTheme)) {
+        $script:CurrentTheme = $savedTheme
+    }
+}
+
+function Show-ThemePickerDialog {
+    $themeForm = New-Object System.Windows.Forms.Form
+    $themeForm.Text = "Choose Theme"
+    $themeForm.Width = 300
+    $themeForm.Height = 200
+    $themeForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $themeForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $themeForm.MaximizeBox = $false
+    $themeForm.MinimizeBox = $false
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "Select a theme:"
+    $label.Location = New-Object System.Drawing.Point(20, 20)
+    $label.AutoSize = $true
+    $themeForm.Controls.Add($label)
+
+    $combo = New-Object System.Windows.Forms.ComboBox
+    $combo.Location = New-Object System.Drawing.Point(20, 50)
+    $combo.Width = 240
+    $combo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    foreach ($themeName in $script:Themes.Keys) {
+        $combo.Items.Add($themeName) | Out-Null
+    }
+    $combo.SelectedIndex = [Array]::IndexOf($script:Themes.Keys, $script:CurrentTheme)
+    $themeForm.Controls.Add($combo)
+
+    $okBtn = New-Object System.Windows.Forms.Button
+    $okBtn.Text = "Apply"
+    $okBtn.Location = New-Object System.Drawing.Point(20, 90)
+    $okBtn.Width = 100
+    $okBtn.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $themeForm.Controls.Add($okBtn)
+
+    $cancelBtn = New-Object System.Windows.Forms.Button
+    $cancelBtn.Text = "Cancel"
+    $cancelBtn.Location = New-Object System.Drawing.Point(140, 90)
+    $cancelBtn.Width = 100
+    $cancelBtn.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $themeForm.Controls.Add($cancelBtn)
+
+    $result = $themeForm.ShowDialog()
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        $selectedTheme = $combo.SelectedItem
+        Apply-Theme $selectedTheme
+        $script:CurrentTheme = $selectedTheme
+        $selectedTheme | Out-File $script:ThemeFile -Encoding UTF8
+        Add-Log "Theme changed to: $selectedTheme"
+    }
+
+    $themeForm.Dispose()
+}
+
+function Apply-Theme($themeName) {
+    $theme = $script:Themes[$themeName]
+    if (-not $theme) { return }
+
+    # Update main window colors
+    $mainBorder = $window.FindName("MainBorder")
+    if ($mainBorder) {
+        $mainBorder.Background = $theme.Background
+    }
+
+    # Update status orb colors will be handled by Set-Status function
+    # Theme colors are referenced by the theme system
+}
+
 # ---------- Status Update Function ----------
 function Set-Status($text, $state) {
     $statusText.Text = $text
     $trayIcon.Text = "NexLink: $text"
     
-    # Update orb color and animation based on state
+    # Get current theme colors
+    $theme = $script:Themes[$script:CurrentTheme]
+    if (-not $theme) { $theme = $script:Themes["Cyberpunk"] }
+    
+    # Update orb color and animation based on state using theme colors
     switch ($state) {
         "Connected" {
-            $statusOrb.Fill = "#22D3AA"
-            $statusOrb.Stroke = "#22D3AA"
+            $statusOrb.Fill = $theme.StatusConnected
+            $statusOrb.Stroke = $theme.StatusConnected
             if ($pulseStoryboard) { try { $pulseStoryboard.Begin() } catch {} }
         }
         "Reconnecting" {
-            $statusOrb.Fill = "#FBBF24"
-            $statusOrb.Stroke = "#FBBF24"
+            $statusOrb.Fill = $theme.StatusReconnecting
+            $statusOrb.Stroke = $theme.StatusReconnecting
             if ($pulseStoryboard) { try { $pulseStoryboard.Begin() } catch {} }
         }
         "Error" {
-            $statusOrb.Fill = "#F43F5E"
-            $statusOrb.Stroke = "#F43F5E"
+            $statusOrb.Fill = $theme.StatusError
+            $statusOrb.Stroke = $theme.StatusError
             if ($pulseStoryboard) { try { $pulseStoryboard.Stop() } catch {} }
         }
         default {
-            $statusOrb.Fill = "#6B7280"
-            $statusOrb.Stroke = "#6B7280"
+            $statusOrb.Fill = $theme.StatusOffline
+            $statusOrb.Stroke = $theme.StatusOffline
             if ($pulseStoryboard) { try { $pulseStoryboard.Stop() } catch {} }
         }
     }
@@ -1081,13 +1301,25 @@ $advancedXaml = @"
                 <Button Name="ReenterCredBtn" Content="Re-enter Credentials" Width="140" Height="32"
                         Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
                         FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                <Button Name="UpgradeBtn" Content="Upgrade to Pro" Width="120" Height="32"
+                        Background="#10B981" Foreground="#F5F5F7" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                <Button Name="EnterLicenseBtn" Content="Enter Pro License" Width="130" Height="32"
+                        Background="#7C3AED" Foreground="#F5F5F7" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                <Button Name="DeactivateLicenseBtn" Content="Deactivate License" Width="130" Height="32"
+                        Background="#EF4444" Foreground="#F5F5F7" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                <Button Name="ThemePickerBtn" Content="Change Theme" Width="110" Height="32"
+                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
                 <Button Name="OpenLogBtn" Content="Open Log File" Width="120" Height="32"
                         Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
                         FontFamily="Segoe UI" FontSize="11" Cursor="Hand"/>
             </StackPanel>
             
             <!-- Version -->
-            <TextBlock Name="AdvVersionText" Text="v1.2.4" 
+            <TextBlock Name="AdvVersionText" Text="v1.3.0" 
                        FontFamily="Segoe UI" FontSize="9" 
                        Foreground="#6B7280" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12,0,0,8"/>
         </Grid>
@@ -1108,6 +1340,10 @@ finally {
 $advLogViewer = $advWindow.FindName("LogViewer")
 $advCloseBtn = $advWindow.FindName("AdvCloseBtn")
 $reenterCredBtn = $advWindow.FindName("ReenterCredBtn")
+$upgradeBtn = $advWindow.FindName("UpgradeBtn")
+$enterLicenseBtn = $advWindow.FindName("EnterLicenseBtn")
+$deactivateLicenseBtn = $advWindow.FindName("DeactivateLicenseBtn")
+$themePickerBtn = $advWindow.FindName("ThemePickerBtn")
 $openLogBtn = $advWindow.FindName("OpenLogBtn")
 $advVersionText = $advWindow.FindName("AdvVersionText")
 $advVersionText.Text = "v$NexLinkVersion"
@@ -1131,6 +1367,51 @@ $reenterCredBtn.Add_Click({
     }
     else {
         Add-Log "Credential re-entry cancelled by user - existing credentials unchanged, app continues running."
+    }
+})
+
+# Upgrade to Pro
+$upgradeBtn.Add_Click({
+    # TODO: Replace with actual Paystack Payment Page URL after setup
+    $paymentUrl = "https://paystack.com/pay/YOUR_PAYMENT_PAGE_ID"
+    [System.Windows.Forms.MessageBox]::Show("This will open the Paystack payment page in your browser. Complete the payment to receive your Pro license key.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+    Start-Process $paymentUrl
+})
+
+# Enter Pro License
+$enterLicenseBtn.Add_Click({
+    Show-LicenseInputDialog
+})
+
+# Theme picker (Pro feature)
+$themePickerBtn.Add_Click({
+    if (-not $script:IsProLicensed) {
+        [System.Windows.Forms.MessageBox]::Show("Theme customization is a Pro feature. Please activate your license first.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        return
+    }
+    Show-ThemePickerDialog
+})
+
+# Deactivate License
+$deactivateLicenseBtn.Add_Click({
+    if (-not $script:IsProLicensed) {
+        [System.Windows.Forms.MessageBox]::Show("No active Pro license to deactivate.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        return
+    }
+    
+    $result = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to deactivate your Pro license? This will remove all Pro features.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+    
+    if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+        try {
+            Remove-Item $script:ProLicenseFile -ErrorAction Stop
+            $script:IsProLicensed = $false
+            Add-Log "Pro license deactivated by user."
+            [System.Windows.Forms.MessageBox]::Show("Pro license deactivated successfully.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        }
+        catch {
+            Add-Log "Failed to deactivate Pro license: $($_.Exception.Message)"
+            [System.Windows.Forms.MessageBox]::Show("Failed to deactivate license. Please check logs for details.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
     }
 })
 

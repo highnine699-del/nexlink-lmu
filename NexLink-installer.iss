@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=NexLink
-AppVersion=1.2.9.0
+AppVersion=1.3.1.0
 DefaultDirName={pf}\NexLink
 DefaultGroupName=NexLink
 OutputBaseFilename=NexLink-Installer
@@ -29,6 +29,8 @@ Source: "README.txt"; DestDir: "{app}"; Flags: ignoreversion
 [UninstallDelete]
 Type: files; Name: "{app}\lmu_portal.cred"
 Type: files; Name: "{app}\lmu_autoconnect.log"
+Type: files; Name: "{app}\nexlink_pro_license.cred"
+Type: files; Name: "{app}\nexlink_theme.txt"
 
 [Icons]
 Name: "{group}\NexLink"; Filename: "{app}\NexLink.exe"; IconFilename: "{app}\wifi_icon.ico"
