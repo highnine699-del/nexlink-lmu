@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.3"
+$NexLinkVersion = "1.3.4"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -1389,7 +1389,7 @@ $reenterCredBtn.Add_Click({
 # Upgrade to Pro
 $upgradeBtn.Add_Click({
     # TODO: Replace with actual Paystack Payment Page URL after setup
-    $paymentUrl = "https://paystack.com/pay/YOUR_PAYMENT_PAGE_ID"
+    $paymentUrl = "https://paystack.shop/pay/nexlink-license"
     [System.Windows.Forms.MessageBox]::Show("This will open the Paystack payment page in your browser. Complete the payment to receive your Pro license key.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
     Start-Process $paymentUrl
 })
