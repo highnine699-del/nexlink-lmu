@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.5"
+$NexLinkVersion = "1.3.6"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -507,6 +507,9 @@ function Invoke-PortalLogin {
             return @{ Success = $true; AlreadyLoggedIn = $false; Url = $url }
         }
         catch {
+            if ($url -like 'http://*') {
+                Add-Log "WARNING: Portal login fell back to an unencrypted HTTP connection for this attempt."
+            }
             if ($url -eq $loginUrls[-1]) { throw $_ }
         }
     }
