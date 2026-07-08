@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=NexLink
-AppVersion=1.3.6.0
+AppVersion=1.3.7.0
 DefaultDirName={pf}\NexLink
 DefaultGroupName=NexLink
 OutputBaseFilename=NexLink-Installer
@@ -34,8 +34,8 @@ Type: files; Name: "{app}\nexlink_theme.txt"
 
 [Icons]
 Name: "{group}\NexLink"; Filename: "{app}\NexLink.exe"; IconFilename: "{app}\wifi_icon.ico"
-Name: "{userdesktop}\NexLink"; Filename: "{app}\NexLink.exe"; IconFilename: "{app}\wifi_icon.ico"; Tasks: desktopicon
-Name: "{userstartup}\NexLink"; Filename: "{app}\NexLink.exe"; IconFilename: "{app}\wifi_icon.ico"; Tasks: startupicon
+Name: "{commondesktop}\NexLink"; Filename: "{app}\NexLink.exe"; IconFilename: "{app}\wifi_icon.ico"; Tasks: desktopicon
+Name: "{commonstartup}\NexLink"; Filename: "{app}\NexLink.exe"; IconFilename: "{app}\wifi_icon.ico"; Tasks: startupicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
