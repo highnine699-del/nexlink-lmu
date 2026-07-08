@@ -161,7 +161,56 @@ async function handleRequest(request) {
       return new Response('Unable to process request', { status: 500 })
     }
   }
-  
+
+  // Handle license activation (device binding)
+  if (url.pathname === '/activate' && request.method === 'POST') {
+    try {
+      const body = await request.json()
+      const { licenseKey, machineHash } = body
+
+      if (!licenseKey || !machineHash) {
+        return new Response('Invalid request', { status: 400 })
+      }
+
+      const parts = licenseKey.split('.')
+      if (parts.length !== 2) {
+        return new Response('Invalid request', { status: 400 })
+      }
+
+      let reference
+      try {
+        reference = atob(parts[0])
+      } catch (e) {
+        return new Response('Invalid request', { status: 400 })
+      }
+
+      if (!/^[a-zA-Z0-9_-]+$/.test(reference)) {
+        return new Response('Invalid request', { status: 400 })
+      }
+
+      // Prove the caller actually possesses a validly-signed key before
+      // trusting their machineHash claim - regenerate deterministically
+      // and compare exactly.
+      const expectedKey = await generateAndSignLicenseKey(reference)
+      if (expectedKey !== licenseKey) {
+        return new Response('Invalid license signature', { status: 403 })
+      }
+
+      const existingHash = await LICENSE_ACTIVATIONS.get(reference)
+      if (existingHash && existingHash !== machineHash) {
+        return new Response('License already activated on another device', { status: 409 })
+      }
+      if (!existingHash) {
+        await LICENSE_ACTIVATIONS.put(reference, machineHash)
+      }
+
+      return new Response('OK', { status: 200 })
+    }
+    catch (error) {
+      return new Response('Unable to process request', { status: 500 })
+    }
+  }
+
   // Health check endpoint
   return new Response('NexLink Pro License Worker is running', { status: 200 })
 }
