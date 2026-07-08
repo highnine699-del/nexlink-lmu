@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.4"
+$NexLinkVersion = "1.3.5"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
@@ -551,10 +551,10 @@ $xaml = @"
         Background="Transparent"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen">
-    <Border Background="#0B0D13" CornerRadius="12" BorderBrush="#1F2937" BorderThickness="1">
+    <Border Name="MainBorder" Background="#0B0D13" CornerRadius="12" BorderBrush="#1F2937" BorderThickness="1">
         <Grid>
             <!-- Custom Title Bar -->
-            <Grid Height="40" VerticalAlignment="Top" Background="#14171F">
+            <Grid Name="TitleBar" Height="40" VerticalAlignment="Top" Background="#14171F">
                 <TextBlock Text="NexLink" FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold" 
                            Foreground="#F5F5F7" VerticalAlignment="Center" Margin="16,0,0,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
@@ -766,23 +766,79 @@ $script:ProPublicKey = @{
 $script:ProLicenseFile = Join-Path $ScriptDir "nexlink_pro_license.cred"
 $script:IsProLicensed = $false
 
+function Get-MachineFingerprint {
+    try {
+        $guid = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+    }
+    catch {
+        # Registry key inaccessible for some reason - fall back to CIM, then hostname
+        try {
+            $guid = (Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID
+        }
+        catch {
+            $guid = $env:COMPUTERNAME
+        }
+    }
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$guid)
+    $hashBytes = $sha256.ComputeHash($bytes)
+    $sha256.Dispose()
+    return [Convert]::ToBase64String($hashBytes)
+}
+
+function Invoke-LicenseActivation($licenseKey) {
+    $activateUrl = "https://nexlink-license.highnine699.workers.dev/activate"
+    $machineHash = Get-MachineFingerprint
+    $body = @{ licenseKey = $licenseKey; machineHash = $machineHash } | ConvertTo-Json -Compress
+
+    try {
+        Invoke-WebRequest -Uri $activateUrl -Method Post -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop | Out-Null
+        return @{ Success = $true; MachineHash = $machineHash }
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            try { $statusCode = [int]$_.Exception.Response.StatusCode } catch {}
+        }
+        if ($statusCode -eq 409) {
+            Add-Log "License activation rejected: this key is already active on another device."
+            return @{ Success = $false; Reason = "AlreadyActivated" }
+        }
+        Add-Log "License activation could not reach the server: $($_.Exception.Message)"
+        return @{ Success = $false; Reason = "NetworkError" }
+    }
+}
+
 function Get-ProLicense {
     try {
         if (-not (Test-Path $script:ProLicenseFile)) { return $null }
-        $cred = Import-Clixml -Path $script:ProLicenseFile
-        return $cred
+        $encrypted = (Get-Content -Path $script:ProLicenseFile -Raw -ErrorAction Stop).Trim()
+        $secure = ConvertTo-SecureString $encrypted
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+        try {
+            $payload = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        }
+        finally {
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+        return $payload | ConvertFrom-Json
     }
     catch {
+        Add-Log "Pro license file could not be read/decrypted (may be from a different user/machine): $($_.Exception.Message)"
         return $null
     }
 }
 
-function Save-ProLicense($licenseKey) {
+function Save-ProLicense($licenseKey, $machineHash) {
     try {
-        $licenseKey | Export-Clixml -Path $script:ProLicenseFile -Force
+        $payload = @{ LicenseKey = $licenseKey; MachineHash = $machineHash } | ConvertTo-Json -Compress
+        $secure = ConvertTo-SecureString $payload -AsPlainText -Force
+        $encrypted = ConvertFrom-SecureString $secure
+        Set-Content -Path $script:ProLicenseFile -Value $encrypted -Encoding UTF8 -Force -NoNewline
         return $true
     }
     catch {
+        Add-Log "Failed to save Pro license: $($_.Exception.Message)"
         return $false
     }
 }
@@ -829,17 +885,27 @@ function Show-LicenseInputDialog {
         "",
         -1, -1
     )
-    
+
     if ($licenseKey -and $licenseKey.Trim() -ne "") {
+        $licenseKey = $licenseKey.Trim()
         if (Verify-ProLicense $licenseKey) {
-            if (Save-ProLicense $licenseKey) {
-                $script:IsProLicensed = $true
-                Add-Log "Pro license activated successfully."
-                [System.Windows.Forms.MessageBox]::Show("Pro license activated successfully!", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+            $activation = Invoke-LicenseActivation $licenseKey
+            if ($activation.Success) {
+                if (Save-ProLicense $licenseKey $activation.MachineHash) {
+                    $script:IsProLicensed = $true
+                    Add-Log "Pro license activated successfully on this device."
+                    [System.Windows.Forms.MessageBox]::Show("Pro license activated successfully!", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+                }
+                else {
+                    Add-Log "Failed to save Pro license locally."
+                    [System.Windows.Forms.MessageBox]::Show("License verified but could not be saved locally. Try again.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+                }
+            }
+            elseif ($activation.Reason -eq "AlreadyActivated") {
+                [System.Windows.Forms.MessageBox]::Show("This license key is already active on another device. Each purchase is valid for one device. If you believe this is an error, contact support.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             }
             else {
-                Add-Log "Failed to save Pro license."
-                [System.Windows.Forms.MessageBox]::Show("Failed to save license key.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+                [System.Windows.Forms.MessageBox]::Show("Could not reach the activation server. Check your internet connection and try again.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
             }
         }
         else {
@@ -851,9 +917,15 @@ function Show-LicenseInputDialog {
 
 # Check for existing Pro license on startup
 $savedLicense = Get-ProLicense
-if ($savedLicense -and (Verify-ProLicense $savedLicense)) {
-    $script:IsProLicensed = $true
-    Add-Log "Pro license detected and valid."
+if ($savedLicense -and (Verify-ProLicense $savedLicense.LicenseKey)) {
+    $currentMachineHash = Get-MachineFingerprint
+    if ($savedLicense.MachineHash -eq $currentMachineHash) {
+        $script:IsProLicensed = $true
+        Add-Log "Pro license detected and valid for this device."
+    }
+    else {
+        Add-Log "Pro license found but it's bound to a different device - Pro features disabled here."
+    }
 }
 
 # Theme definitions
@@ -957,14 +1029,52 @@ function Apply-Theme($themeName) {
     $theme = $script:Themes[$themeName]
     if (-not $theme) { return }
 
-    # Update main window colors
+    # Update main window background
     $mainBorder = $window.FindName("MainBorder")
     if ($mainBorder) {
         $mainBorder.Background = $theme.Background
     }
 
-    # Update status orb colors will be handled by Set-Status function
-    # Theme colors are referenced by the theme system
+    # Update title bar background
+    $titleBar = $window.FindName("TitleBar")
+    if ($titleBar) {
+        $titleBar.Background = $theme.TitleBar
+    }
+
+    # Update action button gradient by recreating the template
+    $actionButton = $window.FindName("ActionButton")
+    if ($actionButton) {
+        $newTemplate = @'
+<ControlTemplate TargetType="Button" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+    <Border Name="ButtonBorder" CornerRadius="22" BorderThickness="0">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="ACCENT_START" Offset="0"/>
+                <GradientStop Color="ACCENT_END" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.Background>
+        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+</ControlTemplate>
+'@
+        $newTemplate = $newTemplate -replace "ACCENT_START", $theme.AccentStart
+        $newTemplate = $newTemplate -replace "ACCENT_END", $theme.AccentEnd
+        
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($newTemplate))
+        $actionButton.Template = [System.Windows.Markup.XamlReader]::Load($reader)
+    }
+
+    # Update update banner
+    $updateBanner = $window.FindName("UpdateBanner")
+    if ($updateBanner) {
+        $updateBanner.Background = $theme.TitleBar
+    }
+
+    # Trigger status update to refresh orb colors with new theme
+    $statusText = $window.FindName("StatusText")
+    if ($statusText) {
+        Set-Status $statusText.Text "default"
+    }
 }
 
 # ---------- Status Update Function ----------
