@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.8"
+$NexLinkVersion = "1.3.9"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTarget = "8.8.8.8"
