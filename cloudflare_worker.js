@@ -189,10 +189,14 @@ async function handleRequest(request) {
       }
 
       // Prove the caller actually possesses a validly-signed key before
-      // trusting their machineHash claim - regenerate deterministically
-      // and compare exactly.
-      const expectedKey = await generateAndSignLicenseKey(reference)
-      if (expectedKey !== licenseKey) {
+      // trusting their machineHash claim - verify the signature against the
+      // public key directly. (We do NOT regenerate a fresh signature to
+      // compare strings - ECDSA signing is not deterministic, so a freshly
+      // generated signature for the same reference will almost never match
+      // byte-for-byte even though both are equally valid. Verification,
+      // not regeneration, is the correct check here.)
+      const isValidSignature = await verifyLicenseSignature(reference, parts[1])
+      if (!isValidSignature) {
         return new Response('Invalid license signature', { status: 403 })
       }
 
@@ -226,6 +230,34 @@ async function verifyPaystackTransaction(reference) {
   const data = await response.json()
   const success = data.status && data.data && data.data.status === 'success'
   return { success }
+}
+
+async function verifyLicenseSignature(reference, signatureBase64) {
+  const jwk = {
+    kty: 'EC',
+    crv: 'P-256',
+    x: ECDSA_X,
+    y: ECDSA_Y
+  }
+
+  const publicKey = await crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['verify']
+  )
+
+  const encoder = new TextEncoder()
+  const messageBytes = encoder.encode(reference)
+  const signatureBytes = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0))
+
+  return await crypto.subtle.verify(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    publicKey,
+    signatureBytes,
+    messageBytes
+  )
 }
 
 async function generateAndSignLicenseKey(reference) {
