@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.9"
+$NexLinkVersion = "1.3.10"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -855,8 +855,13 @@ function Invoke-LicenseActivation($licenseKey) {
     $body = @{ licenseKey = $licenseKey; machineHash = $machineHash } | ConvertTo-Json -Compress
 
     try {
-        Invoke-WebRequest -Uri $activateUrl -Method Post -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop | Out-Null
-        return @{ Success = $true; MachineHash = $machineHash }
+        $resp = Invoke-WebRequest -Uri $activateUrl -Method Post -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        $respData = $resp.Content | ConvertFrom-Json
+        if (-not $respData.deviceToken) {
+            Add-Log "Activation succeeded but server did not return a device token - rejecting."
+            return @{ Success = $false; Reason = "NoDeviceToken" }
+        }
+        return @{ Success = $true; MachineHash = $machineHash; DeviceToken = $respData.deviceToken }
     }
     catch {
         $statusCode = $null
@@ -892,9 +897,9 @@ function Get-ProLicense {
     }
 }
 
-function Save-ProLicense($licenseKey, $machineHash) {
+function Save-ProLicense($licenseKey, $machineHash, $deviceToken) {
     try {
-        $payload = @{ LicenseKey = $licenseKey; MachineHash = $machineHash } | ConvertTo-Json -Compress
+        $payload = @{ LicenseKey = $licenseKey; MachineHash = $machineHash; DeviceToken = $deviceToken } | ConvertTo-Json -Compress
         $secure = ConvertTo-SecureString $payload -AsPlainText -Force
         $encrypted = ConvertFrom-SecureString $secure
         Set-Content -Path $script:ProLicenseFile -Value $encrypted -Encoding UTF8 -Force -NoNewline
@@ -941,6 +946,32 @@ function Verify-ProLicense($licenseKey) {
     }
 }
 
+function Verify-DeviceToken($reference, $machineHash, $deviceTokenB64) {
+    if (-not $deviceTokenB64 -or $deviceTokenB64.Trim() -eq "") { return $false }
+    try {
+        $message = "$reference" + ":" + "$machineHash"
+        $messageBytes = [System.Text.Encoding]::UTF8.GetBytes($message)
+        $signatureBytes = [Convert]::FromBase64String($deviceTokenB64)
+
+        $X = [Convert]::FromBase64String($script:ProPublicKey.x)
+        $Y = [Convert]::FromBase64String($script:ProPublicKey.y)
+        $magicBytes = [BitConverter]::GetBytes([UInt32]0x31534345)
+        $keySizeBytes = [BitConverter]::GetBytes([UInt32]32)
+        $blob = $magicBytes + $keySizeBytes + $X + $Y
+
+        $cngKey = [System.Security.Cryptography.CngKey]::Import($blob, [System.Security.Cryptography.CngKeyBlobFormat]::EccPublicBlob)
+        $ecdsa = New-Object System.Security.Cryptography.ECDsaCng($cngKey)
+        $isValid = $ecdsa.VerifyData($messageBytes, $signatureBytes, [System.Security.Cryptography.HashAlgorithmName]::SHA256)
+        $ecdsa.Dispose()
+        $cngKey.Dispose()
+        return $isValid
+    }
+    catch {
+        Add-Log "Device token verification error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Show-LicenseInputDialog {
     $licenseKey = [Microsoft.VisualBasic.Interaction]::InputBox(
         "Enter your NexLink Pro license key:",
@@ -954,7 +985,7 @@ function Show-LicenseInputDialog {
         if (Verify-ProLicense $licenseKey) {
             $activation = Invoke-LicenseActivation $licenseKey
             if ($activation.Success) {
-                if (Save-ProLicense $licenseKey $activation.MachineHash) {
+                if (Save-ProLicense $licenseKey $activation.MachineHash $activation.DeviceToken) {
                     $script:IsProLicensed = $true
                     Add-Log "Pro license activated successfully on this device."
                     [System.Windows.Forms.MessageBox]::Show("Pro license activated successfully!", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
@@ -982,12 +1013,19 @@ function Show-LicenseInputDialog {
 $savedLicense = Get-ProLicense
 if ($savedLicense -and (Verify-ProLicense $savedLicense.LicenseKey)) {
     $currentMachineHash = Get-MachineFingerprint
-    if ($savedLicense.MachineHash -eq $currentMachineHash) {
+    $referenceBytesForCheck = [Convert]::FromBase64String($savedLicense.LicenseKey.Split(".")[0])
+    $referenceForCheck = [System.Text.Encoding]::UTF8.GetString($referenceBytesForCheck)
+    # Verify a server-issued signature over (reference + machineHash) together,
+    # not a bare local equality check. A bare MachineHash field is trivially
+    # forgeable by anyone (no secret involved in computing it) - this
+    # signature can only have been produced by the server's private key,
+    # which only issues it after genuinely checking device-binding in KV.
+    if (Verify-DeviceToken $referenceForCheck $currentMachineHash $savedLicense.DeviceToken) {
         $script:IsProLicensed = $true
         Add-Log "Pro license detected and valid for this device."
     }
     else {
-        Add-Log "Pro license found but it's bound to a different device - Pro features disabled here."
+        Add-Log "Pro license found but it's bound to a different device (or predates device-token verification) - Pro features disabled here. Re-activate to restore."
     }
 }
 
