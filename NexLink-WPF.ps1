@@ -93,9 +93,11 @@ function Get-VisibleWifiNetworks {
 $NexLinkVersion = "1.3.9"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
-$PingTarget = "8.8.8.8"
-$TestPageUrl = "http://www.msftconnecttest.com/connecttest.txt"
-$ExpectedOnlineText = "Microsoft Connect Test"
+$PingTargets = @("8.8.8.8", "1.1.1.1")
+$TestPageUrls = @(
+    @{ Url = "http://www.msftconnecttest.com/connecttest.txt"; ExpectedText = "Microsoft Connect Test" },
+    @{ Url = "http://detectportal.firefox.com/success.txt"; ExpectedText = "success" }
+)
 $LoginUrl = "https://internet.lmu.edu.ng/login"
 $LogoutUrl = "https://internet.lmu.edu.ng/logout"
 $CheckIntervalMs = 5000
@@ -376,6 +378,29 @@ function Get-BestFreeNetwork {
     return $null
 }
 
+function Get-AllTrustedNetworksByScore {
+    param([psobject]$CurrentWifiState = $null)
+
+    if (-not $CurrentWifiState) { $CurrentWifiState = Get-CurrentWifiState }
+    $visibleNetworks = Get-VisibleWifiNetworks | Where-Object { Test-TrustedNetwork -Ssid $_.SSID }
+    $visibleNetworks = @($visibleNetworks)
+    if (-not $visibleNetworks -or $visibleNetworks.Count -eq 0) { return @() }
+
+    $currentSsid = if ($CurrentWifiState) { $CurrentWifiState.SSID } else { $null }
+    $currentSignal = if ($CurrentWifiState) { $CurrentWifiState.Signal } else { 0 }
+
+    $scored = foreach ($network in $visibleNetworks) {
+        $name = [string]$network.SSID
+        $signal = if ($null -ne $network.Signal) { [int]$network.Signal } else { 0 }
+        $score = $signal
+        if ($currentSsid -and $name -eq $currentSsid) { $score += 5 }
+        if ($currentSsid -and $signal -ge ($currentSignal + 5)) { $score += 10 }
+        [PSCustomObject]@{ SSID = $name; Signal = $signal; Score = $score }
+    }
+
+    return $scored | Sort-Object Score -Descending
+}
+
 function Connect-ToWifiNetwork {
     param([string]$Ssid)
     if (-not $Ssid) { return $false }
@@ -420,27 +445,58 @@ function Restart-WifiConnection {
     Add-Log "Disconnecting current Wi-Fi connection..."
     netsh wlan disconnect 2>$null | Out-Null
     Start-Sleep -Seconds 2
-    if ($targetSsid) {
-        Add-Log "Attempting to connect to '$targetSsid'..."
-        if (Connect-ToWifiNetwork -Ssid $targetSsid) {
-            Add-Log "Connected to '$targetSsid' successfully. Flushing DNS and resetting portal session."
-            Clear-DnsCache
-            $script:LastKnownSSID = $targetSsid
-            $script:LastReconnectAt = Get-Date
-            $script:PortalSession = $null
-        }
-        else {
-            Add-Log "netsh connect to '$targetSsid' failed. Falling back to power-cycling the adapter."
-            $adapter = Get-WifiAdapter
-            if ($adapter) {
-                Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
-                Disable-NetAdapter -Name $adapter.Name -Confirm:$false
-                Start-Sleep -Seconds 2
-                Enable-NetAdapter -Name $adapter.Name -Confirm:$false
-                Add-Log "Adapter '$($adapter.Name)' re-enabled."
+    
+    $candidates = Get-AllTrustedNetworksByScore -CurrentWifiState $currentWifiState
+    if ($candidates -and $candidates.Count -gt 0) {
+        $connected = $false
+        foreach ($candidate in $candidates) {
+            Add-Log "Attempting to connect to '$($candidate.SSID)' (score $($candidate.Score))..."
+            if (Connect-ToWifiNetwork -Ssid $candidate.SSID) {
+                Add-Log "Connected to '$($candidate.SSID)' successfully. Flushing DNS and resetting portal session."
+                Clear-DnsCache
+                $script:LastKnownSSID = $candidate.SSID
+                $script:LastReconnectAt = Get-Date
+                $script:PortalSession = $null
+                $connected = $true
+                break
             }
-            else {
-                Add-Log "No Wi-Fi adapter found to power-cycle."
+            Add-Log "Connect attempt to '$($candidate.SSID)' failed, trying next trusted network..."
+        }
+        
+        if (-not $connected) {
+            Add-Log "All trusted network connect attempts failed. Attempting DHCP release/renew before power-cycling adapter..."
+            try {
+                ipconfig /release | Out-Null
+                Start-Sleep -Milliseconds 500
+                ipconfig /renew | Out-Null
+                Add-Log "DHCP release/renew completed. Retrying connection to best network..."
+                $bestRetry = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
+                if ($bestRetry -and (Connect-ToWifiNetwork -Ssid $bestRetry)) {
+                    Add-Log "Connected to '$bestRetry' successfully after DHCP renew. Flushing DNS and resetting portal session."
+                    Clear-DnsCache
+                    $script:LastKnownSSID = $bestRetry
+                    $script:LastReconnectAt = Get-Date
+                    $script:PortalSession = $null
+                    $connected = $true
+                }
+            }
+            catch {
+                Add-Log "DHCP release/renew failed: $($_.Exception.Message)"
+            }
+            
+            if (-not $connected) {
+                Add-Log "DHCP renew did not restore connectivity. Falling back to power-cycling the adapter."
+                $adapter = Get-WifiAdapter
+                if ($adapter) {
+                    Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
+                    Disable-NetAdapter -Name $adapter.Name -Confirm:$false
+                    Start-Sleep -Seconds 2
+                    Enable-NetAdapter -Name $adapter.Name -Confirm:$false
+                    Add-Log "Adapter '$($adapter.Name)' re-enabled."
+                }
+                else {
+                    Add-Log "No Wi-Fi adapter found to power-cycle."
+                }
             }
         }
     }
@@ -463,24 +519,28 @@ function Restart-WifiConnection {
 }
 
 function Test-PortalSession {
-    try {
-        if ($script:PortalSession) {
-            $resp = Invoke-WebRequest -Uri $TestPageUrl -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+    foreach ($testPage in $TestPageUrls) {
+        try {
+            if ($script:PortalSession) {
+                $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+            }
+            else {
+                $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                $script:PortalSession = $newSession
+            }
+            $content = $resp.Content.Trim()
+            if ($content -eq $testPage.ExpectedText) { return 'Active' }
+            $preview = $content.Substring(0, [Math]::Min(120, $content.Length)) -replace '[\r\n]+', ' '
+            Add-Log "Portal check returned unexpected content from $($testPage.Url) (first 120 chars): $preview"
+            return 'LoggedOut'
         }
-        else {
-            $resp = Invoke-WebRequest -Uri $TestPageUrl -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
-            $script:PortalSession = $newSession
+        catch {
+            Add-Log "Portal connectivity check failed for $($testPage.Url): $($_.Exception.Message) - trying next endpoint..."
+            continue
         }
-        $content = $resp.Content.Trim()
-        if ($content -eq $ExpectedOnlineText) { return 'Active' }
-        $preview = $content.Substring(0, [Math]::Min(120, $content.Length)) -replace '[\r\n]+', ' '
-        Add-Log "Portal check returned unexpected content (first 120 chars): $preview"
-        return 'LoggedOut'
     }
-    catch {
-        Add-Log "Portal connectivity check failed to connect: $($_.Exception.Message)"
-        return 'Unknown'
-    }
+    Add-Log "All portal connectivity check endpoints failed."
+    return 'Unknown'
 }
 
 function Invoke-PortalLogin {
@@ -1204,6 +1264,8 @@ function Invoke-GracefulExit {
     $script:allowExit = $true
     $timer.Stop()
     $trayIcon.Visible = $false
+    try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
+    try { [System.Net.NetworkInformation.NetworkChange]::remove_NetworkAddressChanged($script:NetworkAddressChangedHandler) } catch {}
     try { $script:InstanceMutex.ReleaseMutex() } catch {}
     Remove-Item $script:ExitSignalFile -ErrorAction SilentlyContinue
     $window.Close()
@@ -1215,6 +1277,44 @@ $menuExit.Add_Click({ Invoke-GracefulExit })
 # ---------- Timer-driven check loop ----------
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
+
+# Debounce state for NetworkAddressChanged (prevents duplicate checks during a single roam event)
+$script:LastNetworkChangeCheckAt = [DateTime]::MinValue
+$script:NetworkChangeDebounceSec = 2
+
+# Shared immediate-check function used by both PowerModeChanged and NetworkAddressChanged handlers.
+# Marshals back onto the WPF Dispatcher thread and sets a 1ms timer interval so the tick fires
+# on the very next dispatcher frame instead of waiting up to $CheckIntervalMs.
+function Invoke-ImmediateConnectivityCheck {
+    Add-Log "Immediate connectivity check triggered (network or power event)."
+    $window.Dispatcher.BeginInvoke([Action]{
+        $timer.Stop()
+        $timer.Interval = [TimeSpan]::FromMilliseconds(1)
+        $timer.Start()
+    })
+}
+
+# Power mode change event handler — fires an immediate check on wake from sleep.
+$powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.SystemEvents]) -EventName "PowerModeChanged" -Action {
+    if ($EventArgs.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
+        Add-Log "System resumed from sleep."
+        Invoke-ImmediateConnectivityCheck
+    }
+}
+
+# Network address change handler — fires an immediate check when the SSID, IP address,
+# or adapter state changes (e.g. roaming between APs while walking between buildings).
+# The debounce prevents the same physical roam event from triggering the check 2-3 times
+# in rapid succession (IP release → IP acquire → adapter settle all fire this event).
+$script:NetworkAddressChangedHandler = {
+    if (((Get-Date) - $script:LastNetworkChangeCheckAt).TotalSeconds -lt $script:NetworkChangeDebounceSec) {
+        return
+    }
+    $script:LastNetworkChangeCheckAt = Get-Date
+    Add-Log "Network address change detected (SSID/IP/adapter change)."
+    Invoke-ImmediateConnectivityCheck
+}
+[System.Net.NetworkInformation.NetworkChange]::add_NetworkAddressChanged($script:NetworkAddressChangedHandler)
 
 $timer.Add_Tick({
     if (Test-Path $script:ExitSignalFile) {
@@ -1248,7 +1348,13 @@ $timer.Add_Tick({
             $currentWifiState = Get-CurrentWifiState
         }
 
-        $pingOk = Test-Connection -ComputerName $PingTarget -Count 1 -Quiet -ErrorAction SilentlyContinue
+        $pingOk = $false
+        foreach ($target in $PingTargets) {
+            if (Test-Connection -ComputerName $target -Count 1 -Quiet -ErrorAction SilentlyContinue) {
+                $pingOk = $true
+                break
+            }
+        }
 
         if ($pingOk) {
             if ($script:wifiFailCount -gt 0) {
@@ -1259,7 +1365,7 @@ $timer.Add_Tick({
         }
         else {
             $script:wifiFailCount++
-            Add-Log "Ping failed ($script:wifiFailCount/$WifiFailsBeforeFix) - target=$PingTarget"
+            Add-Log "Ping failed ($script:wifiFailCount/$WifiFailsBeforeFix) - targets=$($PingTargets -join ', ')"
             Set-Status "Fixing your connection..." "Reconnecting"
         }
 
@@ -1342,12 +1448,7 @@ $timer.Add_Tick({
             $script:LastLoggedStatus = ""
         }
 
-        if ($script:portalFailCount -ge 2) {
-            $timer.Interval = [TimeSpan]::FromMilliseconds([Math]::Min($CheckIntervalMs * $script:portalFailCount, 30000))
-        }
-        else {
-            $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
-        }
+        $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
         $script:secondsToNextCheck = $timer.Interval.TotalMilliseconds / 1000
     }
     catch {
@@ -1581,6 +1682,8 @@ $window.Add_Closed({
     # properly instead of leaving a zombie process or orphaned tray icon.
     $timer.Stop()
     $trayIcon.Visible = $false
+    try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
+    try { [System.Net.NetworkInformation.NetworkChange]::remove_NetworkAddressChanged($script:NetworkAddressChangedHandler) } catch {}
     try { $script:InstanceMutex.ReleaseMutex() } catch {}
     [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
 })

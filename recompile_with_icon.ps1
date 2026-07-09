@@ -1,3 +1,9 @@
+# ============================================================
+# DEPRECATED - superseded by release.ps1
+# This script references the old LMU-AutoConnect-GUI.ps1 which has been
+# replaced by NexLink-WPF.ps1. Do not use for new builds.
+# ============================================================
+
 Set-StrictMode -Off
 $ErrorActionPreference='Stop'
 Set-Location -LiteralPath 'c:\Users\AY ADVANCE TECH\Documents\VIBE_CODER\wifi setup'

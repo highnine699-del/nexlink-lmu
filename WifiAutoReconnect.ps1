@@ -1,3 +1,9 @@
+# ============================================================
+# DEPRECATED - superseded by NexLink-WPF.ps1
+# This file is kept for reference only and is not part of the
+# current build or release pipeline. Do not edit for new features.
+# ============================================================
+
 # WifiAutoReconnect.ps1
 # Watches your internet connection and auto-reconnects Wi-Fi when it silently dies.
 # Run this in PowerShell BEFORE your test starts, and leave the window open (minimized is fine).

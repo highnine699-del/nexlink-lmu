@@ -1,3 +1,9 @@
+# ============================================================
+# DEPRECATED - superseded by NexLink-WPF.ps1
+# This file is kept for reference only and is not part of the
+# current build or release pipeline. Do not edit for new features.
+# ============================================================
+
 # LMU-AutoConnect.ps1
 # Watches your internet connection AND your LMU hotspot portal session.
 # If the portal session drops (common cause of "connected but not working"),

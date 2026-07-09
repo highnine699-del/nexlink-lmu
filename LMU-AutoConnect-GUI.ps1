@@ -1,3 +1,9 @@
+# ============================================================
+# DEPRECATED - superseded by NexLink-WPF.ps1
+# This file is kept for reference only and is not part of the
+# current build or release pipeline. Do not edit for new features.
+# ============================================================
+
 # LMU-AutoConnect-GUI.ps1
 # Same as before, but with a visible status window so you always know what's happening.
 # Green = all good. Orange = fixing something. Red = error (check the log box).
