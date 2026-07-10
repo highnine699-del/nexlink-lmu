@@ -1,0 +1,63 @@
+warning: in the working copy of 'cloudflare_worker.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/cloudflare_worker.js b/cloudflare_worker.js[m
+[1mindex ff2985d..640e174 100644[m
+[1m--- a/cloudflare_worker.js[m
+[1m+++ b/cloudflare_worker.js[m
+[36m@@ -208,7 +208,19 @@[m [masync function handleRequest(request) {[m
+         await LICENSE_ACTIVATIONS.put(reference, machineHash)[m
+       }[m
+ [m
+[31m-      return new Response('OK', { status: 200 })[m
+[32m+[m[32m      // Issue a signed device token binding this exact reference+machineHash[m
+[32m+[m[32m      // pair. This is the piece that actually closes the forgery gap: a[m
+[32m+[m[32m      // bare machineHash stored locally could be trivially recomputed and[m
+[32m+[m[32m      // faked by anyone (no secret involved in Get-MachineFingerprint). A[m
+[32m+[m[32m      // signature over reference+machineHash together can only be produced[m
+[32m+[m[32m      // by someone holding the server's private key - i.e. only this[m
+[32m+[m[32m      // Worker, only after it has genuinely checked the KV binding above.[m
+[32m+[m[32m      const deviceToken = await signDeviceToken(reference, machineHash)[m
+[32m+[m
+[32m+[m[32m      return new Response(JSON.stringify({ deviceToken }), {[m
+[32m+[m[32m        status: 200,[m
+[32m+[m[32m        headers: { 'Content-Type': 'application/json' }[m
+[32m+[m[32m      })[m
+     }[m
+     catch (error) {[m
+       return new Response('Unable to process request', { status: 500 })[m
+[36m@@ -260,6 +272,36 @@[m [masync function verifyLicenseSignature(reference, signatureBase64) {[m
+   )[m
+ }[m
+ [m
+[32m+[m[32masync function signDeviceToken(reference, machineHash) {[m
+[32m+[m[32m  const jwk = {[m
+[32m+[m[32m    kty: 'EC',[m
+[32m+[m[32m    crv: 'P-256',[m
+[32m+[m[32m    d: ECDSA_D,[m
+[32m+[m[32m    x: ECDSA_X,[m
+[32m+[m[32m    y: ECDSA_Y[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const privateKey = await crypto.subtle.importKey([m
+[32m+[m[32m    'jwk',[m
+[32m+[m[32m    jwk,[m
+[32m+[m[32m    { name: 'ECDSA', namedCurve: 'P-256' },[m
+[32m+[m[32m    false,[m
+[32m+[m[32m    ['sign'][m
+[32m+[m[32m  )[m
+[32m+[m
+[32m+[m[32m  const encoder = new TextEncoder()[m
+[32m+[m[32m  const message = `${reference}:${machineHash}`[m
+[32m+[m[32m  const messageBytes = encoder.encode(message)[m
+[32m+[m
+[32m+[m[32m  const signature = await crypto.subtle.sign([m
+[32m+[m[32m    { name: 'ECDSA', hash: 'SHA-256' },[m
+[32m+[m[32m    privateKey,[m
+[32m+[m[32m    messageBytes[m
+[32m+[m[32m  )[m
+[32m+[m
+[32m+[m[32m  return btoa(String.fromCharCode(...new Uint8Array(signature)))[m
+[32m+[m[32m}[m
+[32m+[m
+ async function generateAndSignLicenseKey(reference) {[m
+   // Import the private key from JWK format[m
+   // Environment variables: ECDSA_D, ECDSA_X, ECDSA_Y (base64 encoded)[m
