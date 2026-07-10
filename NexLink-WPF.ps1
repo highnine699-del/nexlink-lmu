@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.10"
+$NexLinkVersion = "1.3.11"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -269,10 +269,6 @@ function Test-ForUpdate {
 }
 
 function Start-NexLinkUpdate($manifest) {
-    # CRITICAL ORDERING: download + hash verification happen BEFORE anything
-    # about the currently running app is touched. If either step fails, we
-    # return early and the running app is completely unaffected - it never
-    # even knows an update attempt was made, beyond the log entry.
     $tempInstaller = Join-Path $env:TEMP "NexLink-Update-$($manifest.version).exe"
     try {
         Add-Log "Downloading update v$($manifest.version)..."
@@ -288,7 +284,7 @@ function Start-NexLinkUpdate($manifest) {
     try {
         $actualHash = (Get-FileHash -Path $tempInstaller -Algorithm SHA256 -ErrorAction Stop).Hash
         if ($actualHash -ne $manifest.sha256.ToUpper()) {
-            Add-Log "Update verification FAILED - hash mismatch. Aborting update, current app unaffected. Expected=$($manifest.sha256) Actual=$actualHash"
+            Add-Log "Update verification FAILED - hash mismatch. Aborting update, current app unaffected."
             [System.Windows.MessageBox]::Show("The downloaded update failed verification and will NOT be installed. Your current version is unaffected and still running.", "NexLink Update - Verification Failed") | Out-Null
             Remove-Item $tempInstaller -ErrorAction SilentlyContinue
             return
@@ -296,31 +292,39 @@ function Start-NexLinkUpdate($manifest) {
         Add-Log "Update verified (SHA256 match). Proceeding with install."
     }
     catch {
-        Add-Log "Update verification could not be completed (app unaffected, still running normally): $($_.Exception.Message)"
+        Add-Log "Update verification could not be completed: $($_.Exception.Message)"
         Remove-Item $tempInstaller -ErrorAction SilentlyContinue
         return
     }
 
-    # Only past this point do we touch the running app's state at all.
+    # CRITICAL: this process must fully exit BEFORE the installer runs -
+    # Windows won't let an installer overwrite a currently-running exe.
+    # A detached helper waits for this process to actually terminate,
+    # then runs the installer, then relaunches the new exe.
     $exePath = Join-Path $ScriptDir "NexLink.exe"
-    try {
-        Add-Log "Shutting down for update to v$($manifest.version)..."
-        $timer.Stop()
-        $trayIcon.Visible = $false
-        try { $script:InstanceMutex.ReleaseMutex() } catch {}
+    $currentPid = $PID
+    $helperScript = @"
+Start-Sleep -Milliseconds 500
+`$deadline = (Get-Date).AddSeconds(15)
+while ((Get-Process -Id $currentPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt `$deadline) {
+    Start-Sleep -Milliseconds 200
+}
+Start-Process -FilePath '$tempInstaller' -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait
+if (Test-Path '$exePath') {
+    Start-Process -FilePath '$exePath'
+}
+Remove-Item '$tempInstaller' -ErrorAction SilentlyContinue
+"@
+    $helperPath = Join-Path $env:TEMP "NexLink-UpdateHelper-$($manifest.version).ps1"
+    Set-Content -Path $helperPath -Value $helperScript -Encoding UTF8
 
-        Start-Process -FilePath $tempInstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+    Add-Log "Handing off to update helper and exiting to release the file lock..."
+    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$helperPath`"" -WindowStyle Hidden
 
-        if (Test-Path $exePath) {
-            Start-Process -FilePath $exePath
-        }
-        Remove-Item $tempInstaller -ErrorAction SilentlyContinue
-        [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
-    }
-    catch {
-        Add-Log "Update install step failed: $($_.Exception.Message)"
-        [System.Windows.MessageBox]::Show("The update installer failed to run. Please download and run it manually from GitHub.`n`n$($_.Exception.Message)", "NexLink Update") | Out-Null
-    }
+    $timer.Stop()
+    $trayIcon.Visible = $false
+    try { $script:InstanceMutex.ReleaseMutex() } catch {}
+    [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
 }
 
 function Get-CurrentWifiState {
@@ -760,6 +764,7 @@ $window.Add_MouseLeftButtonUp({
 
 $window.Add_MouseMove({
     if ($script:isDragging) {
+        if (-not $script:dragStartPoint) { return }
         $currentPoint = $_.GetPosition($this)
         $deltaX = $currentPoint.X - $script:dragStartPoint.X
         $deltaY = $currentPoint.Y - $script:dragStartPoint.Y
@@ -786,11 +791,18 @@ $minimizeBtn.Add_Click({
 
 # ---------- Logging Functions ----------
 $script:logLines = @()
+$script:LogLock = New-Object Object
 
 function Add-Log($text) {
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $line = "[$timestamp] $text"
-    $script:logLines += $line
+    [System.Threading.Monitor]::Enter($script:LogLock)
+    try {
+        $script:logLines += $line
+    }
+    finally {
+        [System.Threading.Monitor]::Exit($script:LogLock)
+    }
     try {
         $logDir = Split-Path -Parent $LogFile
         if ($logDir -and -not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
@@ -1012,20 +1024,20 @@ function Show-LicenseInputDialog {
 # Check for existing Pro license on startup
 $savedLicense = Get-ProLicense
 if ($savedLicense -and (Verify-ProLicense $savedLicense.LicenseKey)) {
-    $currentMachineHash = Get-MachineFingerprint
-    $referenceBytesForCheck = [Convert]::FromBase64String($savedLicense.LicenseKey.Split(".")[0])
-    $referenceForCheck = [System.Text.Encoding]::UTF8.GetString($referenceBytesForCheck)
-    # Verify a server-issued signature over (reference + machineHash) together,
-    # not a bare local equality check. A bare MachineHash field is trivially
-    # forgeable by anyone (no secret involved in computing it) - this
-    # signature can only have been produced by the server's private key,
-    # which only issues it after genuinely checking device-binding in KV.
-    if (Verify-DeviceToken $referenceForCheck $currentMachineHash $savedLicense.DeviceToken) {
-        $script:IsProLicensed = $true
-        Add-Log "Pro license detected and valid for this device."
+    try {
+        $currentMachineHash = Get-MachineFingerprint
+        $referenceBytesForCheck = [Convert]::FromBase64String($savedLicense.LicenseKey.Split(".")[0])
+        $referenceForCheck = [System.Text.Encoding]::UTF8.GetString($referenceBytesForCheck)
+        if (Verify-DeviceToken $referenceForCheck $currentMachineHash $savedLicense.DeviceToken) {
+            $script:IsProLicensed = $true
+            Add-Log "Pro license detected and valid for this device."
+        }
+        else {
+            Add-Log "Pro license found but it's bound to a different device (or predates device-token verification) - Pro features disabled here. Re-activate to restore."
+        }
     }
-    else {
-        Add-Log "Pro license found but it's bound to a different device (or predates device-token verification) - Pro features disabled here. Re-activate to restore."
+    catch {
+        Add-Log "Startup license check failed unexpectedly: $($_.Exception.Message)"
     }
 }
 
@@ -1162,7 +1174,12 @@ function Apply-Theme($themeName) {
         $newTemplate = $newTemplate -replace "ACCENT_END", $theme.AccentEnd
         
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($newTemplate))
-        $actionButton.Template = [System.Windows.Markup.XamlReader]::Load($reader)
+        try {
+            $actionButton.Template = [System.Windows.Markup.XamlReader]::Load($reader)
+        }
+        finally {
+            $reader.Dispose()
+        }
     }
 
     # Update update banner
@@ -1241,7 +1258,7 @@ function Reconnect-Manually {
     $script:wifiFailCount = 0
     $script:portalFailCount = 0
     $script:secondsToNextCheck = $CheckIntervalMs / 1000
-    $timer.Interval = $CheckIntervalMs
+    $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
     $timer.Start()
 }
 
@@ -1345,12 +1362,17 @@ $powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.S
 # The debounce prevents the same physical roam event from triggering the check 2-3 times
 # in rapid succession (IP release → IP acquire → adapter settle all fire this event).
 $script:NetworkAddressChangedHandler = {
-    if (((Get-Date) - $script:LastNetworkChangeCheckAt).TotalSeconds -lt $script:NetworkChangeDebounceSec) {
-        return
+    try {
+        if (((Get-Date) - $script:LastNetworkChangeCheckAt).TotalSeconds -lt $script:NetworkChangeDebounceSec) {
+            return
+        }
+        $script:LastNetworkChangeCheckAt = Get-Date
+        Add-Log "Network address change detected (SSID/IP/adapter change)."
+        Invoke-ImmediateConnectivityCheck
     }
-    $script:LastNetworkChangeCheckAt = Get-Date
-    Add-Log "Network address change detected (SSID/IP/adapter change)."
-    Invoke-ImmediateConnectivityCheck
+    catch {
+        try { Add-Log "NetworkAddressChanged handler error: $($_.Exception.Message)" } catch { Write-Host "[NexLink] NetworkAddressChanged handler error: $($_.Exception.Message)" }
+    }
 }
 [System.Net.NetworkInformation.NetworkChange]::add_NetworkAddressChanged($script:NetworkAddressChangedHandler)
 
