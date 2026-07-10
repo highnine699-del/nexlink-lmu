@@ -208,7 +208,19 @@ async function handleRequest(request) {
         await LICENSE_ACTIVATIONS.put(reference, machineHash)
       }
 
-      return new Response('OK', { status: 200 })
+      // Issue a signed device token binding this exact reference+machineHash
+      // pair. This is the piece that actually closes the forgery gap: a
+      // bare machineHash stored locally could be trivially recomputed and
+      // faked by anyone (no secret involved in Get-MachineFingerprint). A
+      // signature over reference+machineHash together can only be produced
+      // by someone holding the server's private key - i.e. only this
+      // Worker, only after it has genuinely checked the KV binding above.
+      const deviceToken = await signDeviceToken(reference, machineHash)
+
+      return new Response(JSON.stringify({ deviceToken }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
     }
     catch (error) {
       return new Response('Unable to process request', { status: 500 })
@@ -258,6 +270,36 @@ async function verifyLicenseSignature(reference, signatureBase64) {
     signatureBytes,
     messageBytes
   )
+}
+
+async function signDeviceToken(reference, machineHash) {
+  const jwk = {
+    kty: 'EC',
+    crv: 'P-256',
+    d: ECDSA_D,
+    x: ECDSA_X,
+    y: ECDSA_Y
+  }
+
+  const privateKey = await crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign']
+  )
+
+  const encoder = new TextEncoder()
+  const message = `${reference}:${machineHash}`
+  const messageBytes = encoder.encode(message)
+
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    messageBytes
+  )
+
+  return btoa(String.fromCharCode(...new Uint8Array(signature)))
 }
 
 async function generateAndSignLicenseKey(reference) {
