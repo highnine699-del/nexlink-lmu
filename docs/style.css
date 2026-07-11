@@ -760,10 +760,18 @@ img {
 
 .smartscreen-steps {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 28px;
+}
+
+.smartscreen-step-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-width: 200px;
 }
 
 .smartscreen-step {

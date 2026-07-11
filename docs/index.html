@@ -264,8 +264,10 @@
           <figcaption>Connected and logged in</figcaption>
         </figure>
         <figure class="screenshot-item">
+          <!-- PLACEHOLDER: Screenshot startup.png shows "Starting..." state.
+               Replace src with a real "Fixing your connection..." screenshot when available. -->
           <img src="screenshots/Screenshot startup.png" alt="NexLink on startup, establishing connection" />
-          <figcaption>Auto-reconnecting</figcaption>
+          <figcaption>Fixing your connection...</figcaption>
         </figure>
         <figure class="screenshot-item">
           <img src="screenshots/Screenshot advanced panel.png"
@@ -301,23 +303,30 @@
           NexLink is fully open source; you can read every line before you run it.
         </p>
         <div class="smartscreen-steps">
-          <div class="smartscreen-step">
-            <span class="smartscreen-step-num">1</span>
-            <span>Click <strong>"More info"</strong></span>
+          <div class="smartscreen-step-group">
+            <div class="smartscreen-step">
+              <span class="smartscreen-step-num">1</span>
+              <span>Click <strong>"More info"</strong></span>
+            </div>
+            <figure class="screenshot-item smartscreen-screenshot">
+              <img src="screenshots/Screenshot SmartScreen warning .png"
+                alt="Windows SmartScreen warning dialog showing the More info link" />
+              <figcaption>Step 1 — the initial SmartScreen dialog</figcaption>
+            </figure>
           </div>
-          <div class="smartscreen-arrow">→</div>
-          <div class="smartscreen-step">
-            <span class="smartscreen-step-num">2</span>
-            <span>Click <strong>"Run anyway"</strong></span>
+          <div class="smartscreen-arrow" aria-hidden="true">→</div>
+          <div class="smartscreen-step-group">
+            <div class="smartscreen-step">
+              <span class="smartscreen-step-num">2</span>
+              <span>Click <strong>"Run anyway"</strong></span>
+            </div>
+            <figure class="screenshot-item smartscreen-screenshot">
+              <img src="screenshots/Screenshot SmartScreen warning 2.png"
+                alt="SmartScreen dialog after clicking More info, showing the Run anyway button" />
+              <figcaption>Step 2 — click Run anyway</figcaption>
+            </figure>
           </div>
         </div>
-        <figure class="screenshot-item smartscreen-screenshot">
-          <div class="screenshot-placeholder screenshot-placeholder--warning"
-            aria-label="Screenshot placeholder: Windows SmartScreen warning dialog">
-            SCREENSHOT: SmartScreen warning
-          </div>
-          <figcaption>The SmartScreen dialog — click "More info" then "Run anyway"</figcaption>
-        </figure>
       </div>
     </div>
   </section>
