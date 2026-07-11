@@ -130,7 +130,6 @@ $script:wifiFailCount = 0
 $script:portalFailCount = 0
 $script:portalUnknownCount = 0
 $script:LastKnownSSID = $null
-$script:secondsToNextCheck = $CheckIntervalMs / 1000
 $script:PortalRetryAfter = [DateTime]::MinValue
 $script:PortalCooldownShown = $false
 $script:LastReconnectAt = [DateTime]::MinValue
@@ -314,6 +313,7 @@ if (Test-Path '$exePath') {
     Start-Process -FilePath '$exePath'
 }
 Remove-Item '$tempInstaller' -ErrorAction SilentlyContinue
+Remove-Item `$MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
 "@
     $helperPath = Join-Path $env:TEMP "NexLink-UpdateHelper-$($manifest.version).ps1"
     Set-Content -Path $helperPath -Value $helperScript -Encoding UTF8
@@ -334,7 +334,7 @@ function Get-CurrentWifiState {
 
         $ssid = $null
         $signal = 0
-        $ssidLine = $result | Select-String '^\s*SSID\s*:\s*(.+)$'
+        $ssidLine = $result | Select-String '^\s{1,4}SSID\s*:\s*(.+)$'
         if ($ssidLine) { $ssid = ($ssidLine.Matches[0].Groups[1].Value).Trim() }
 
         $signalLine = $result | Select-String '^\s*Signal\s*:\s*(\d+)\s*%'
@@ -595,6 +595,7 @@ function Invoke-PortalLogout {
             if ($url -eq $logoutUrls[-1]) { return $false }
         }
     }
+    return $false
 }
 
 # ---------- WPF UI Setup ----------
@@ -1272,7 +1273,6 @@ function Reconnect-Manually {
     Restart-WifiConnection | Out-Null
     $script:wifiFailCount = 0
     $script:portalFailCount = 0
-    $script:secondsToNextCheck = $CheckIntervalMs / 1000
     $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
     $timer.Start()
 }
@@ -1402,7 +1402,6 @@ $timer.Add_Tick({
         return
     }
     if ($script:ManuallyDisconnected) { return }
-    $script:secondsToNextCheck = $CheckIntervalMs / 1000
     if (((Get-Date) - $script:LastLogTrimAt).TotalHours -ge 1) {
         Limit-LogFile
         $script:LastLogTrimAt = Get-Date
@@ -1529,7 +1528,6 @@ $timer.Add_Tick({
         }
 
         $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
-        $script:secondsToNextCheck = $timer.Interval.TotalMilliseconds / 1000
     }
     catch {
         Add-Log "ERROR: $($_.Exception.Message)"

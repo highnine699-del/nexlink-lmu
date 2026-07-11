@@ -146,8 +146,8 @@ This will:
 If you see "License verification error" in logs:
 
 1. Check that the Worker is using the new JWK format
-2. Verify environment secrets are set correctly
-3. Check that `ecdsa_private_key.json` components match the secrets
+2. Verify environment secrets are set correctly in Cloudflare Dashboard → Workers → nexlink-license → Settings → Variables & Secrets
+3. Confirm all three secrets (`ECDSA_D`, `ECDSA_X`, `ECDSA_Y`) are present and contain no extra whitespace
 
 ### Paystack Callback Not Working
 
@@ -159,20 +159,20 @@ If you see "License verification error" in logs:
 
 If Worker fails to import key:
 
-- Ensure you're using the base64 values from `ecdsa_private_key.json`
-- Check that all three secrets (ECDSA_D, ECDSA_X, ECDSA_Y) are set
+- Confirm all three secrets (`ECDSA_D`, `ECDSA_X`, `ECDSA_Y`) are set in Cloudflare Dashboard
 - Verify no extra whitespace in secret values
+- Re-run key rotation with `wrangler secret put` if needed (see key rotation procedure)
 
 ---
 
 ## Security Checklist
 
-- [ ] `ecdsa_private_key.json` is in `.gitignore`
-- [ ] Private key components are only in Cloudflare secrets, not in code
-- [ ] Paystack secret key is only in Cloudflare secrets
-- [ ] Worker error messages are generic (no information disclosure)
-- [ ] Input validation is enabled in Worker
-- [ ] .gitignore excludes all sensitive files
+- [x] `ecdsa_private_key.json` is in `.gitignore` (and deleted from disk after key rotation)
+- [x] Private key components are only in Cloudflare secrets, not in code
+- [x] Paystack secret key is only in Cloudflare secrets
+- [x] Worker error messages are generic (no information disclosure)
+- [x] Input validation is enabled in Worker
+- [x] .gitignore excludes all sensitive files
 
 ---
 
@@ -189,14 +189,16 @@ If Worker fails to import key:
 ## Files Modified
 
 1. `NexLink-WPF.ps1` - ECDSA verification, public key embedded, graceful exit
-2. `cloudflare_worker.js` - JWK key import, base64.blob format
-3. `NexLink-installer.iss` - Version 1.3.3.0
-4. `.gitignore` - ecdsa_private_key.json added
+2. `cloudflare_worker.js` - JWK key import, device token signing
+3. `NexLink-installer.iss` - Version tracking
+4. `.gitignore` - sensitive files excluded
 
 ---
 
 ## Files Created
 
-1. `ecdsa_private_key.json` - Private key (local only, never commit)
-2. `ecdsa_public_key.json` - Public key (safe to commit)
-3. `DEPLOYMENT_GUIDE.md` - This file
+1. `ecdsa_public_key.json` - Public key reference (safe to commit; updated on key rotation)
+2. `DEPLOYMENT_GUIDE.md` - This file
+
+> Note: `ecdsa_private_key.json` should be deleted from disk after the private key
+> components are stored as Cloudflare Worker secrets. It must never be committed.

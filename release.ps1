@@ -116,6 +116,13 @@ $issVersion = "$Version.0"
 $issContent = $issContent -replace 'AppVersion=[\d\.]+', "AppVersion=$issVersion"
 Set-Content ".\NexLink-installer.iss" -Value $issContent -NoNewline
 
+# Bump landing page static fallback versions so they stay accurate when the
+# GitHub API is unavailable or JS is disabled.
+Write-Host "[2b/8] Bumping fallback version in docs/index.html..." -ForegroundColor Green
+$htmlContent = Get-Content ".\docs\index.html" -Raw
+$htmlContent = $htmlContent -replace '>v[\d\.]+</span>', ">v$Version</span>"
+Set-Content ".\docs\index.html" -Value $htmlContent -NoNewline
+
 # 5. Recompile the exe
 Write-Host "[3/8] Recompiling NexLink.exe..." -ForegroundColor Green
 Remove-Item ".\NexLink.exe" -ErrorAction SilentlyContinue
@@ -190,7 +197,7 @@ git push
 Pop-Location
 
 # 11. Commit the version bump to the main source repo too
-git add NexLink-WPF.ps1 NexLink-installer.iss
+git add NexLink-WPF.ps1 NexLink-installer.iss docs/index.html
 git commit -m "v$Version release"
 git push
 

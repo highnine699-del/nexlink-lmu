@@ -46,5 +46,4 @@ Status Indicators:
 - Amber orb: Reconnecting or checking connection
 - Red-pink orb: Error or offline
 
-If you need support, keep this installer folder and the README for reference.
-For Pro setup instructions, see DEPLOYMENT_GUIDE.md in the installation directory.
+If you need support, visit https://github.com/highnine699-del/nexlink-updates for documentation and to report issues.

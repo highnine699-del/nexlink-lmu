@@ -158,6 +158,7 @@ async function handleRequest(request) {
         headers: { 'Content-Type': 'text/html;charset=UTF-8' }
       })
     } catch (error) {
+      console.error('[NexLink Worker] /callback error:', error)
       return new Response('Unable to process request', { status: 500 })
     }
   }
@@ -223,6 +224,7 @@ async function handleRequest(request) {
       })
     }
     catch (error) {
+      console.error('[NexLink Worker] /activate error:', error)
       return new Response('Unable to process request', { status: 500 })
     }
   }
