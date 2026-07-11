@@ -48,12 +48,25 @@ body {
 
 a {
   color: var(--gradient-end);
-  text-decoration: none;
+  text-decoration: underline;
   transition: opacity var(--transition);
 }
 
 a:hover {
   opacity: 0.8;
+  text-decoration: underline;
+}
+
+/* Navigation, button-style, and utility links — no underline */
+.footer-links a,
+.monitor-source-link,
+.btn-primary,
+.faq-answer a {
+  text-decoration: none;
+}
+
+.footer-links a:hover,
+.faq-answer a:hover {
   text-decoration: underline;
 }
 
@@ -897,8 +910,7 @@ img {
 
 .flow-node small {
   font-size: 0.7rem;
-  color: var(--text-secondary);
-  opacity: 0.7;
+  color: #B0B7C3;
 }
 
 .flow-arrow {
@@ -1043,8 +1055,7 @@ img {
 
 .release-date {
   font-size: 0.75rem;
-  color: var(--text-secondary);
-  opacity: 0.6;
+  color: #B0B7C3;
   margin-top: 14px;
 }
 
@@ -1162,8 +1173,7 @@ img {
 
 .footer-version {
   font-size: 0.75rem;
-  color: var(--text-secondary);
-  opacity: 0.5;
+  color: #B0B7C3;
 }
 
 .footer-links {
@@ -1187,8 +1197,7 @@ img {
 
 .footer-copy {
   font-size: 0.75rem;
-  color: var(--text-secondary);
-  opacity: 0.4;
+  color: #B0B7C3;
 }
 
 /* ============================================================

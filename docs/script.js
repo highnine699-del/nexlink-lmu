@@ -9,7 +9,7 @@
 /* ---- Config ---- */
 const GITHUB_OWNER = 'highnine699-del';
 const GITHUB_REPO = 'nexlink-updates';
-const FALLBACK_VER = 'v1.3.13';
+const FALLBACK_VER = 'latest';
 const API_BASE = 'https://api.github.com/repos/' + GITHUB_OWNER + '/' + GITHUB_REPO;
 
 /* ============================================================

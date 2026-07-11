@@ -1,11 +1,12 @@
 # NexLink Pro Deployment Guide
 
-**Version**: 1.3.6
-**Date**: July 6, 2026
+**Version**: 1.3.13
+**Date**: July 2026
 
-## Status: Code Complete, Manual Deployment Required
+## Status: Deployed
 
-All code changes are complete. The following manual steps are required to deploy the Pro licensing system.
+The Pro licensing system is live. This guide documents how to redeploy or
+reconfigure it from scratch (e.g. after key rotation or a new Cloudflare account).
 
 ---
 
@@ -41,11 +42,11 @@ In Cloudflare Worker Settings → Variables & Secrets → Environment Variables:
 | Secret Name | Value |
 |-------------|-------|
 | `PAYSTACK_SECRET_KEY` | Your Paystack secret key (from Paystack Dashboard) |
-| `ECDSA_D` | `[REDACTED-ROTATED-KEY]` |
-| `ECDSA_X` | `yg0VaTuX8pv8kJlfoFIOXFDdgW2vhipwb8sQjb1QlNw=` |
-| `ECDSA_Y` | `uYyJ9dNVOTu3HiTerRBEojxnGSend6kgMJgeb4W6rG8=` |
+| `ECDSA_D` | The `d` value from `ecdsa_private_key.json` — **never write this value here, copy it directly from the file** |
+| `ECDSA_X` | The `x` value from `ecdsa_private_key.json` or `ecdsa_public_key.json` |
+| `ECDSA_Y` | The `y` value from `ecdsa_private_key.json` or `ecdsa_public_key.json` |
 
-**Critical**: Never commit `ecdsa_private_key.json` to git. Only use the individual components as secrets.
+⚠️ **Never record the `ECDSA_D` (private key) value in this document or any file that could be committed to git. Copy it directly from `ecdsa_private_key.json` into the Cloudflare secret field.**
 
 ### 2.3 Configure Paystack Callback
 
@@ -83,7 +84,8 @@ Run the recompilation script:
 
 This will:
 - Stop any running NexLink processes
-- Compile `NexLink-WPF.ps1` to `NexLink.exe` with version 1.3.3.0
+- Read the current version from `NexLink-WPF.ps1` automatically
+- Compile `NexLink-WPF.ps1` to `NexLink.exe`
 - Verify the output file exists
 
 ---
@@ -176,8 +178,8 @@ If Worker fails to import key:
 
 ## Version Information
 
-- **NexLink Version**: 1.3.6
-- **Installer Version**: 1.3.6.0
+- **NexLink Version**: 1.3.13
+- **Installer Version**: 1.3.13.0
 - **License Format**: base64(reference).base64(signature)
 - **Signature Algorithm**: ECDSA P-256 with SHA-256
 - **Key Import**: JWK format (Cloudflare), CNG blob (PowerShell)

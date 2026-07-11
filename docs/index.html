@@ -16,16 +16,20 @@
   <meta property="og:description"
     content="NexLink automatically connects and logs you into LMU's campus Wi-Fi so you don't have to. Free. Open source." />
   <meta property="og:image" content="og-image.png" />
-  <meta property="og:url" content="https://highnine699-del.github.io/nexlink-updates/" />
+  <meta property="og:url" content="https://highnine699-del.github.io/nexlink-lmu/" />
   <meta name="twitter:card" content="summary_large_image" />
 
   <!-- Favicon -->
   <link rel="icon" href="favicon.ico" type="image/x-icon" />
 
-  <!-- Fonts -->
+  <!-- Fonts: loaded asynchronously to avoid render-blocking -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" as="style"
+    onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  </noscript>
 
   <!-- Styles -->
   <link rel="stylesheet" href="style.css" />
@@ -33,500 +37,514 @@
 
 <body>
 
-  <!-- ===================== HERO ===================== -->
-  <section class="hero" id="hero">
-    <div class="hero-inner">
+  <main>
 
-      <!-- Mini app mockup -->
-      <div class="app-mockup" aria-hidden="true">
-        <div class="mockup-titlebar">
-          <span class="mockup-title">NexLink</span>
-          <div class="mockup-dots">
-            <span></span><span></span>
+    <!-- ===================== HERO ===================== -->
+    <section class="hero" id="hero">
+      <div class="hero-inner">
+
+        <!-- Mini app mockup -->
+        <div class="app-mockup" aria-hidden="true">
+          <div class="mockup-titlebar">
+            <span class="mockup-title">NexLink</span>
+            <div class="mockup-dots">
+              <span></span><span></span>
+            </div>
+          </div>
+          <div class="mockup-body">
+            <div class="orb-wrap">
+              <div class="orb" id="heroOrb"></div>
+            </div>
+            <p class="mockup-status">You're connected</p>
+            <p class="mockup-network">Daniel-Metro Wifi</p>
           </div>
         </div>
-        <div class="mockup-body">
-          <div class="orb-wrap">
-            <div class="orb" id="heroOrb"></div>
+
+        <!-- Context line -->
+        <p class="hero-context">Made for Landmark University students.</p>
+
+        <!-- Headline -->
+        <h1 class="hero-headline">Never touch the Wi-Fi portal again.</h1>
+        <p class="hero-subhead">NexLink automatically connects and logs you into LMU's campus Wi-Fi — so you don't have
+          to.</p>
+
+        <!-- CTA -->
+        <div class="hero-cta-wrap">
+          <a href="https://github.com/highnine699-del/nexlink-updates/releases/latest/download/NexLink-Installer.exe"
+            class="btn-primary" id="heroDownloadBtn" target="_blank" rel="noopener noreferrer">
+            Download NexLink
+          </a>
+          <p class="btn-platform">Windows 10 &amp; 11</p>
+        </div>
+
+        <p class="hero-meta">Free · Open source · <span id="heroVersion">v1.3.13</span></p>
+
+        <!-- Compact install steps — uses div+flex instead of ol to avoid
+           invalid <span> children inside <ol>. The aria-label on the
+           wrapper still communicates the semantic meaning. -->
+        <div class="install-steps" role="list" aria-label="Install steps">
+          <div class="install-step" role="listitem">
+            <span class="install-num">1</span>
+            <span>Download</span>
           </div>
-          <p class="mockup-status">You're connected</p>
-          <p class="mockup-network">Daniel-Metro Wifi</p>
-        </div>
-      </div>
-
-      <!-- Context line -->
-      <p class="hero-context">Made for Landmark University students.</p>
-
-      <!-- Headline -->
-      <h1 class="hero-headline">Never touch the Wi-Fi portal again.</h1>
-      <p class="hero-subhead">NexLink automatically connects and logs you into LMU's campus Wi-Fi — so you don't have
-        to.</p>
-
-      <!-- CTA -->
-      <div class="hero-cta-wrap">
-        <a href="https://github.com/highnine699-del/nexlink-updates/releases/latest/download/NexLink-Installer.exe"
-          class="btn-primary" id="heroDownloadBtn" target="_blank" rel="noopener noreferrer">
-          Download NexLink
-        </a>
-        <p class="btn-platform">Windows 10 &amp; 11</p>
-      </div>
-
-      <p class="hero-meta">Free · Open source · <span id="heroVersion">v1.3.13</span></p>
-
-      <!-- Compact install steps -->
-      <ol class="install-steps" aria-label="Install steps">
-        <li class="install-step">
-          <span class="install-num">1</span>
-          <span>Download</span>
-        </li>
-        <span class="install-arrow" aria-hidden="true">→</span>
-        <li class="install-step">
-          <span class="install-num">2</span>
-          <span>Open</span>
-        </li>
-        <span class="install-arrow" aria-hidden="true">→</span>
-        <li class="install-step">
-          <span class="install-num">3</span>
-          <span>Enter credentials once</span>
-        </li>
-        <span class="install-arrow" aria-hidden="true">→</span>
-        <li class="install-step">
-          <span class="install-num">4</span>
-          <span>Done</span>
-        </li>
-      </ol>
-
-    </div>
-  </section>
-
-  <!-- ===================== WHY ===================== -->
-  <section class="section why-section" id="why">
-    <div class="container">
-      <p class="section-label">Why this exists</p>
-      <p class="why-text">LMU's Wi-Fi portal logs you out constantly. Logging back in dozens of times a day is annoying.
-        So I built NexLink to handle it automatically.</p>
-    </div>
-  </section>
-
-  <!-- ===================== PERSONAL NOTE ===================== -->
-  <section class="section personal-section" id="about">
-    <div class="container">
-      <p class="personal-note">
-        Hi, I'm Josiah. I built NexLink because I got tired of logging into LMU Wi-Fi over and over again. Now everyone
-        can use it too.
-      </p>
-    </div>
-  </section>
-
-  <!-- ===================== TRUST ===================== -->
-  <section class="section trust-section" id="trust">
-    <div class="container">
-      <h2 class="section-heading">Why you can trust this</h2>
-      <ul class="trust-list">
-        <li>
-          <span class="check">✓</span>
-          <span><a href="https://github.com/highnine699-del/nexlink-updates" target="_blank"
-              rel="noopener noreferrer">Open source</a> — check the code yourself</span>
-        </li>
-        <li>
-          <span class="check">✓</span>
-          <span>Password encrypted locally via <a
-              href="https://github.com/highnine699-del/nexlink-updates/blob/main/NexLink-WPF.ps1#L180" target="_blank"
-              rel="noopener noreferrer">Windows DPAPI</a>, never sent anywhere</span>
-        </li>
-        <li>
-          <span class="check">✓</span>
-          <span>No ads, no tracking, no telemetry</span>
-        </li>
-        <li>
-          <span class="check">✓</span>
-          <span>Built by an LMU student, for LMU students</span>
-        </li>
-        <li>
-          <span class="check">✓</span>
-          <span>Free</span>
-        </li>
-        <li>
-          <span class="check check--soon">○</span>
-          <span>Signed releases <span class="tag-soon">coming soon</span></span>
-        </li>
-      </ul>
-
-      <!-- Monitor flowchart card -->
-      <div class="monitor-card">
-        <p class="monitor-card-label">How the connection monitor works</p>
-        <div class="monitor-flow"
-          aria-label="Connection monitor flow: Every 5 seconds, check if still connected, if no then log back in, done">
-          <div class="monitor-node">Every 5 seconds</div>
-          <span class="monitor-arrow" aria-hidden="true">→</span>
-          <div class="monitor-node">Still connected?</div>
-          <span class="monitor-arrow" aria-hidden="true">→</span>
-          <div class="monitor-node monitor-node--no">No → log back in</div>
-          <span class="monitor-arrow" aria-hidden="true">→</span>
-          <div class="monitor-node monitor-node--done">Done</div>
-        </div>
-        <a href="https://github.com/highnine699-del/nexlink-updates/blob/main/NexLink-WPF.ps1"
-          class="monitor-source-link" target="_blank" rel="noopener noreferrer">View the source →</a>
-      </div>
-
-      <div class="stats-row">
-        <div class="stat">
-          <span class="stat-number" id="statCommits">—</span>
-          <span class="stat-label">commits</span>
-        </div>
-        <div class="stat">
-          <span class="stat-number" id="statReleases">—</span>
-          <span class="stat-label">releases</span>
-        </div>
-        <div class="stat">
-          <span class="stat-number">100%</span>
-          <span class="stat-label">PowerShell · no hidden binaries</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== BEFORE / AFTER ===================== -->
-  <section class="section compare-section" id="compare">
-    <div class="container">
-      <h2 class="section-heading">Before and after</h2>
-      <div class="compare-grid">
-        <div class="compare-col compare-col--before">
-          <p class="compare-col-title">Without NexLink</p>
-          <ul class="compare-list">
-            <li>Open browser</li>
-            <li>Notice you're not connected</li>
-            <li>Navigate to the portal</li>
-            <li>Type your username</li>
-            <li>Type your password</li>
-            <li>Submit the form</li>
-            <li>Wait for it to redirect</li>
-            <li>Go back to what you were doing</li>
-            <li class="repeat">Repeat this 10–20× a day</li>
-          </ul>
-        </div>
-        <div class="compare-col compare-col--after">
-          <p class="compare-col-title">With NexLink</p>
-          <ul class="compare-list compare-list--after">
-            <li class="after-item">Install once</li>
-            <li class="after-done">✓ Just stay connected</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== HOW IT WORKS ===================== -->
-  <section class="section how-section" id="how">
-    <div class="container">
-      <h2 class="section-heading">How it works</h2>
-      <ol class="steps-list">
-        <li class="step reveal">
-          <span class="step-num">1</span>
-          <div class="step-body">
-            <strong>Install once.</strong>
-            <span>Run the installer, enter your portal credentials once, done.</span>
+          <span class="install-arrow" aria-hidden="true">→</span>
+          <div class="install-step" role="listitem">
+            <span class="install-num">2</span>
+            <span>Open</span>
           </div>
-        </li>
-        <li class="step reveal">
-          <span class="step-num">2</span>
-          <div class="step-body">
-            <strong>Runs quietly in the background.</strong>
-            <span>Lives in your system tray.</span>
+          <span class="install-arrow" aria-hidden="true">→</span>
+          <div class="install-step" role="listitem">
+            <span class="install-num">3</span>
+            <span>Enter credentials once</span>
           </div>
-        </li>
-        <li class="step reveal">
-          <span class="step-num">3</span>
-          <div class="step-body">
-            <strong>Detects when you're logged out.</strong>
-            <span>Checks the portal every 5 seconds. If you're out, it notices immediately.</span>
+          <span class="install-arrow" aria-hidden="true">→</span>
+          <div class="install-step" role="listitem">
+            <span class="install-num">4</span>
+            <span>Done</span>
           </div>
-        </li>
-        <li class="step reveal">
-          <span class="step-num">4</span>
-          <div class="step-body">
-            <strong>Logs you back in automatically.</strong>
-            <span>You just stay connected. No popup, no interruption.</span>
-          </div>
-        </li>
-      </ol>
-    </div>
-  </section>
-
-  <!-- ===================== SCREENSHOTS ===================== -->
-  <section class="section screenshots-section" id="screenshots">
-    <div class="container">
-      <h2 class="section-heading">See it in action</h2>
-      <div class="screenshots-grid">
-        <figure class="screenshot-item">
-          <img src="screenshots/Screenshot connected .png"
-            alt="NexLink showing connected state — green orb, You're connected status" />
-          <figcaption>Connected and logged in</figcaption>
-        </figure>
-        <figure class="screenshot-item">
-          <!-- PLACEHOLDER: Screenshot startup.png shows "Starting..." state.
-               Replace src with a real "Fixing your connection..." screenshot when available. -->
-          <img src="screenshots/Screenshot startup.png" alt="NexLink on startup, establishing connection" />
-          <figcaption>Fixing your connection...</figcaption>
-        </figure>
-        <figure class="screenshot-item">
-          <img src="screenshots/Screenshot advanced panel.png"
-            alt="NexLink advanced panel showing live connection log" />
-          <figcaption>Advanced panel &amp; live log</figcaption>
-        </figure>
-        <figure class="screenshot-item">
-          <img src="screenshots/Screenshot tray icon.png" alt="NexLink tray icon in the Windows system tray" />
-          <figcaption>Tray icon — always there, never in your way</figcaption>
-        </figure>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== SMARTSCREEN ===================== -->
-  <section class="section smartscreen-section" id="smartscreen">
-    <div class="container">
-      <div class="smartscreen-card">
-        <div class="smartscreen-badge">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-            style="display:inline;vertical-align:-2px;margin-right:5px">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          Windows SmartScreen warning
         </div>
-        <h2 class="smartscreen-heading">You'll probably see a warning. Here's why, and what to do.</h2>
-        <p class="smartscreen-body">
-          Windows shows this for any app that isn't code-signed with a paid certificate.
-          It doesn't mean the app is unsafe — it means Microsoft hasn't seen it before.
-          NexLink is fully open source; you can read every line before you run it.
+
+      </div>
+    </section>
+
+    <!-- ===================== WHY ===================== -->
+    <section class="section why-section" id="why">
+      <div class="container">
+        <p class="section-label">Why this exists</p>
+        <p class="why-text">LMU's Wi-Fi portal logs you out constantly. Logging back in dozens of times a day is
+          annoying.
+          So I built NexLink to handle it automatically.</p>
+      </div>
+    </section>
+
+    <!-- ===================== PERSONAL NOTE ===================== -->
+    <section class="section personal-section" id="about">
+      <div class="container">
+        <p class="personal-note">
+          Hi, I'm Josiah. I built NexLink because I got tired of logging into LMU Wi-Fi over and over again. Now
+          everyone
+          can use it too.
         </p>
-        <div class="smartscreen-steps">
-          <div class="smartscreen-step-group">
-            <div class="smartscreen-step">
-              <span class="smartscreen-step-num">1</span>
-              <span>Click <strong>"More info"</strong></span>
-            </div>
-            <figure class="screenshot-item smartscreen-screenshot">
-              <img src="screenshots/Screenshot SmartScreen warning .png"
-                alt="Windows SmartScreen warning dialog showing the More info link" />
-              <figcaption>Step 1 — the initial SmartScreen dialog</figcaption>
-            </figure>
-          </div>
-          <div class="smartscreen-arrow" aria-hidden="true">→</div>
-          <div class="smartscreen-step-group">
-            <div class="smartscreen-step">
-              <span class="smartscreen-step-num">2</span>
-              <span>Click <strong>"Run anyway"</strong></span>
-            </div>
-            <figure class="screenshot-item smartscreen-screenshot">
-              <img src="screenshots/Screenshot SmartScreen warning 2.png"
-                alt="SmartScreen dialog after clicking More info, showing the Run anyway button" />
-              <figcaption>Step 2 — click Run anyway</figcaption>
-            </figure>
-          </div>
-        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ===================== SECURITY DIAGRAM ===================== -->
-  <section class="section security-section" id="security">
-    <div class="container">
-      <h2 class="section-heading">How your password is handled</h2>
-      <p class="section-sub">It never leaves your PC. Here's the exact path:</p>
-      <div class="security-flow" id="securityFlow">
-        <div class="flow-node" data-flow-index="0">
-          <span class="flow-icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="7.5" cy="15.5" r="5.5" />
-              <line x1="21" y1="2" x2="13" y2="10" />
-              <path d="M18 5l1.5 1.5L17 9l-1.5-1.5" />
-            </svg>
-          </span>
-          <span>Your password</span>
-        </div>
-        <span class="flow-arrow" data-flow-index="1" aria-hidden="true">→</span>
-        <div class="flow-node" data-flow-index="2">
-          <span class="flow-icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          </span>
-          <span>Windows DPAPI</span>
-        </div>
-        <span class="flow-arrow" data-flow-index="3" aria-hidden="true">→</span>
-        <div class="flow-node" data-flow-index="4">
-          <span class="flow-icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
-            </svg>
-          </span>
-          <span>Encrypted file<br><small>on your PC only</small></span>
-        </div>
-        <span class="flow-arrow flow-arrow--break" data-flow-index="5" aria-hidden="true">→</span>
-        <div class="flow-node" data-flow-index="6">
-          <span class="flow-icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </span>
-          <span>NexLink reads it</span>
-        </div>
-        <span class="flow-arrow" data-flow-index="7" aria-hidden="true">→</span>
-        <div class="flow-node" data-flow-index="8">
-          <span class="flow-icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-            </svg>
-          </span>
-          <span>LMU portal<br><small>(HTTPS only)</small></span>
-        </div>
-      </div>
-      <p class="security-note">DPAPI ties the encrypted file to your Windows user account. Even if someone copied the
-        file off your machine, they couldn't read it without logging into your account.</p>
-    </div>
-  </section>
-
-  <!-- ===================== LIMITATIONS ===================== -->
-  <section class="section limits-section" id="limitations">
-    <div class="container">
-      <h2 class="section-heading">Known limitations</h2>
-      <ul class="limits-list">
-        <li>Only works with LMU's specific Wi-Fi portal</li>
-        <li>Windows only (10 and 11)</li>
-        <li>Requires an internet-accessible portal to log into — won't help with general connectivity outages</li>
-        <li>You'll need to enter your credentials once, on first run</li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- ===================== ROADMAP ===================== -->
-  <section class="section roadmap-section" id="roadmap">
-    <div class="container">
-      <h2 class="section-heading">Roadmap</h2>
-      <div class="roadmap-grid">
-        <div class="roadmap-col">
-          <p class="roadmap-col-title">✓ Done</p>
-          <ul class="roadmap-list">
-            <li>Auto login to LMU portal</li>
-            <li>Continuous connection monitoring</li>
-            <li>Auto-reconnect across campus APs</li>
-            <li>Sleep/wake detection</li>
-            <li>Network change detection (instant roam)</li>
-            <li>DHCP renewal on stale leases</li>
-            <li>Pro licensing system</li>
-            <li>Auto-update pipeline</li>
-          </ul>
-        </div>
-        <div class="roadmap-col">
-          <p class="roadmap-col-title">Coming soon</p>
-          <ul class="roadmap-list">
-            <li>Multi-network profiles</li>
-            <li>NetPulse integration</li>
-            <li>Code-signed releases</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== RELEASE NOTES ===================== -->
-  <section class="section release-section" id="releases">
-    <div class="container">
-      <h2 class="section-heading">Latest release</h2>
-      <div class="release-box" id="releaseBox">
-        <div class="release-loading">Loading release notes…</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===================== FAQ ===================== -->
-  <section class="section faq-section" id="faq">
-    <div class="container">
-      <h2 class="section-heading">Questions</h2>
-      <div class="faq-list">
-
-        <div class="faq-item">
-          <button class="faq-question" aria-expanded="false">
-            Does NexLink store my password?
-            <span class="faq-icon" aria-hidden="true">+</span>
-          </button>
-          <div class="faq-answer" hidden>
-            <p>Yes — but only on your own machine, encrypted with <a
+    <!-- ===================== TRUST ===================== -->
+    <section class="section trust-section" id="trust">
+      <div class="container">
+        <h2 class="section-heading">Why you can trust this</h2>
+        <ul class="trust-list">
+          <li>
+            <span class="check">✓</span>
+            <span><a href="https://github.com/highnine699-del/nexlink-updates" target="_blank"
+                rel="noopener noreferrer">Open source</a> — check the code yourself</span>
+          </li>
+          <li>
+            <span class="check">✓</span>
+            <span>Password encrypted locally via <a
                 href="https://github.com/highnine699-del/nexlink-updates/blob/main/NexLink-WPF.ps1#L180" target="_blank"
-                rel="noopener noreferrer">Windows DPAPI</a>. DPAPI ties the encrypted file to your Windows user account,
-              so even if someone copied the file off your PC they couldn't read it. Your password is never sent anywhere
-              except LMU's own portal over HTTPS. See the <a href="#trust">trust section</a> for the full details.</p>
+                rel="noopener noreferrer">Windows DPAPI</a>, never sent anywhere</span>
+          </li>
+          <li>
+            <span class="check">✓</span>
+            <span>No ads, no tracking, no telemetry</span>
+          </li>
+          <li>
+            <span class="check">✓</span>
+            <span>Built by an LMU student, for LMU students</span>
+          </li>
+          <li>
+            <span class="check">✓</span>
+            <span>Free</span>
+          </li>
+          <li>
+            <span class="check check--soon">○</span>
+            <span>Signed releases <span class="tag-soon">coming soon</span></span>
+          </li>
+        </ul>
+
+        <!-- Monitor flowchart card -->
+        <div class="monitor-card">
+          <p class="monitor-card-label">How the connection monitor works</p>
+          <div class="monitor-flow"
+            aria-label="Connection monitor flow: Every 5 seconds, check if still connected, if no then log back in, done">
+            <div class="monitor-node">Every 5 seconds</div>
+            <span class="monitor-arrow" aria-hidden="true">→</span>
+            <div class="monitor-node">Still connected?</div>
+            <span class="monitor-arrow" aria-hidden="true">→</span>
+            <div class="monitor-node monitor-node--no">No → log back in</div>
+            <span class="monitor-arrow" aria-hidden="true">→</span>
+            <div class="monitor-node monitor-node--done">Done</div>
           </div>
+          <a href="https://github.com/highnine699-del/nexlink-updates/blob/main/NexLink-WPF.ps1"
+            class="monitor-source-link" target="_blank" rel="noopener noreferrer">View the source →</a>
         </div>
 
-        <div class="faq-item">
-          <button class="faq-question" aria-expanded="false">
-            Is this safe?
-            <span class="faq-icon" aria-hidden="true">+</span>
-          </button>
-          <div class="faq-answer" hidden>
-            <p>Yes. NexLink is fully open source — every line is on GitHub. Your password is encrypted locally using
-              Windows DPAPI and is only ever sent to LMU's own portal over HTTPS. Nothing is collected, logged remotely,
-              or shared.</p>
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-number" id="statCommits">—</span>
+            <span class="stat-label">commits</span>
+          </div>
+          <div class="stat">
+            <span class="stat-number" id="statReleases">—</span>
+            <span class="stat-label">releases</span>
+          </div>
+          <div class="stat">
+            <span class="stat-number">100%</span>
+            <span class="stat-label">PowerShell · no hidden binaries</span>
           </div>
         </div>
-
-        <div class="faq-item">
-          <button class="faq-question" aria-expanded="false">
-            Does it cost anything?
-            <span class="faq-icon" aria-hidden="true">+</span>
-          </button>
-          <div class="faq-answer" hidden>
-            <p>The core app is completely free. There's a Pro version with theme customization — same reliable
-              connection engine, just a cosmetic upgrade.</p>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <button class="faq-question" aria-expanded="false">
-            What if I have a problem?
-            <span class="faq-icon" aria-hidden="true">+</span>
-          </button>
-          <div class="faq-answer" hidden>
-            <p>Open the Advanced panel (gear icon in the app) — the live log shows exactly what the app is doing and is
-              usually enough to diagnose an issue. If you're stuck, open an issue on <a
-                href="https://github.com/highnine699-del/nexlink-updates/issues" target="_blank"
-                rel="noopener noreferrer">GitHub</a>.</p>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <button class="faq-question" aria-expanded="false">
-            Does it run at startup?
-            <span class="faq-icon" aria-hidden="true">+</span>
-          </button>
-          <div class="faq-answer" hidden>
-            <p>Only if you tell it to. The installer has an optional "Start automatically when I log into Windows"
-              checkbox — it's unchecked by default. You decide.</p>
-          </div>
-        </div>
-
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ===================== TESTIMONIALS (hidden until real quotes exist) ===================== -->
-  <!--
+    <!-- ===================== BEFORE / AFTER ===================== -->
+    <section class="section compare-section" id="compare">
+      <div class="container">
+        <h2 class="section-heading">Before and after</h2>
+        <div class="compare-grid">
+          <div class="compare-col compare-col--before">
+            <p class="compare-col-title">Without NexLink</p>
+            <ul class="compare-list">
+              <li>Open browser</li>
+              <li>Notice you're not connected</li>
+              <li>Navigate to the portal</li>
+              <li>Type your username</li>
+              <li>Type your password</li>
+              <li>Submit the form</li>
+              <li>Wait for it to redirect</li>
+              <li>Go back to what you were doing</li>
+              <li class="repeat">Repeat this 10–20× a day</li>
+            </ul>
+          </div>
+          <div class="compare-col compare-col--after">
+            <p class="compare-col-title">With NexLink</p>
+            <ul class="compare-list compare-list--after">
+              <li class="after-item">Install once</li>
+              <li class="after-done">✓ Just stay connected</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== HOW IT WORKS ===================== -->
+    <section class="section how-section" id="how">
+      <div class="container">
+        <h2 class="section-heading">How it works</h2>
+        <ol class="steps-list">
+          <li class="step reveal">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <strong>Install once.</strong>
+              <span>Run the installer, enter your portal credentials once, done.</span>
+            </div>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <strong>Runs quietly in the background.</strong>
+              <span>Lives in your system tray.</span>
+            </div>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">3</span>
+            <div class="step-body">
+              <strong>Detects when you're logged out.</strong>
+              <span>Checks the portal every 5 seconds. If you're out, it notices immediately.</span>
+            </div>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">4</span>
+            <div class="step-body">
+              <strong>Logs you back in automatically.</strong>
+              <span>You just stay connected. No popup, no interruption.</span>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== SCREENSHOTS ===================== -->
+    <section class="section screenshots-section" id="screenshots">
+      <div class="container">
+        <h2 class="section-heading">See it in action</h2>
+        <div class="screenshots-grid">
+          <figure class="screenshot-item">
+            <img src="screenshots/Screenshot connected .png"
+              alt="NexLink showing connected state — green orb, You're connected status" width="360" height="225" />
+            <figcaption>Connected and logged in</figcaption>
+          </figure>
+          <figure class="screenshot-item">
+            <!-- PLACEHOLDER: Screenshot startup.png shows "Starting..." state.
+               Replace src with a real "Fixing your connection..." screenshot when available. -->
+            <img src="screenshots/Screenshot startup.png" alt="NexLink on startup, establishing connection" width="360"
+              height="225" loading="lazy" />
+            <figcaption>Fixing your connection...</figcaption>
+          </figure>
+          <figure class="screenshot-item">
+            <img src="screenshots/Screenshot advanced panel.png"
+              alt="NexLink advanced panel showing live connection log" width="750" height="600" loading="lazy" />
+            <figcaption>Advanced panel &amp; live log</figcaption>
+          </figure>
+          <figure class="screenshot-item">
+            <img src="screenshots/Screenshot tray icon.png" alt="NexLink tray icon in the Windows system tray"
+              width="360" height="225" loading="lazy" />
+            <figcaption>Tray icon — always there, never in your way</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SMARTSCREEN ===================== -->
+    <section class="section smartscreen-section" id="smartscreen">
+      <div class="container">
+        <div class="smartscreen-card">
+          <div class="smartscreen-badge">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+              style="display:inline;vertical-align:-2px;margin-right:5px">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            Windows SmartScreen warning
+          </div>
+          <h2 class="smartscreen-heading">You'll probably see a warning. Here's why, and what to do.</h2>
+          <p class="smartscreen-body">
+            Windows shows this for any app that isn't code-signed with a paid certificate.
+            It doesn't mean the app is unsafe — it means Microsoft hasn't seen it before.
+            NexLink is fully open source; you can read every line before you run it.
+          </p>
+          <div class="smartscreen-steps">
+            <div class="smartscreen-step-group">
+              <div class="smartscreen-step">
+                <span class="smartscreen-step-num">1</span>
+                <span>Click <strong>"More info"</strong></span>
+              </div>
+              <figure class="screenshot-item smartscreen-screenshot">
+                <img src="screenshots/Screenshot SmartScreen warning .png"
+                  alt="Windows SmartScreen warning dialog showing the More info link" width="500" height="350"
+                  loading="lazy" />
+                <figcaption>Step 1 — the initial SmartScreen dialog</figcaption>
+              </figure>
+            </div>
+            <div class="smartscreen-arrow" aria-hidden="true">→</div>
+            <div class="smartscreen-step-group">
+              <div class="smartscreen-step">
+                <span class="smartscreen-step-num">2</span>
+                <span>Click <strong>"Run anyway"</strong></span>
+              </div>
+              <figure class="screenshot-item smartscreen-screenshot">
+                <img src="screenshots/Screenshot SmartScreen warning 2.png"
+                  alt="SmartScreen dialog after clicking More info, showing the Run anyway button" width="500"
+                  height="350" loading="lazy" />
+                <figcaption>Step 2 — click Run anyway</figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SECURITY DIAGRAM ===================== -->
+    <section class="section security-section" id="security">
+      <div class="container">
+        <h2 class="section-heading">How your password is handled</h2>
+        <p class="section-sub">It never leaves your PC. Here's the exact path:</p>
+        <div class="security-flow" id="securityFlow">
+          <div class="flow-node" data-flow-index="0">
+            <span class="flow-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="5.5" />
+                <line x1="21" y1="2" x2="13" y2="10" />
+                <path d="M18 5l1.5 1.5L17 9l-1.5-1.5" />
+              </svg>
+            </span>
+            <span>Your password</span>
+          </div>
+          <span class="flow-arrow" data-flow-index="1" aria-hidden="true">→</span>
+          <div class="flow-node" data-flow-index="2">
+            <span class="flow-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </span>
+            <span>Windows DPAPI</span>
+          </div>
+          <span class="flow-arrow" data-flow-index="3" aria-hidden="true">→</span>
+          <div class="flow-node" data-flow-index="4">
+            <span class="flow-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+            </span>
+            <span>Encrypted file<br><small>on your PC only</small></span>
+          </div>
+          <span class="flow-arrow flow-arrow--break" data-flow-index="5" aria-hidden="true">→</span>
+          <div class="flow-node" data-flow-index="6">
+            <span class="flow-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </span>
+            <span>NexLink reads it</span>
+          </div>
+          <span class="flow-arrow" data-flow-index="7" aria-hidden="true">→</span>
+          <div class="flow-node" data-flow-index="8">
+            <span class="flow-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            </span>
+            <span>LMU portal<br><small>(HTTPS only)</small></span>
+          </div>
+        </div>
+        <p class="security-note">DPAPI ties the encrypted file to your Windows user account. Even if someone copied the
+          file off your machine, they couldn't read it without logging into your account.</p>
+      </div>
+    </section>
+
+    <!-- ===================== LIMITATIONS ===================== -->
+    <section class="section limits-section" id="limitations">
+      <div class="container">
+        <h2 class="section-heading">Known limitations</h2>
+        <ul class="limits-list">
+          <li>Only works with LMU's specific Wi-Fi portal</li>
+          <li>Windows only (10 and 11)</li>
+          <li>Requires an internet-accessible portal to log into — won't help with general connectivity outages</li>
+          <li>You'll need to enter your credentials once, on first run</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================== ROADMAP ===================== -->
+    <section class="section roadmap-section" id="roadmap">
+      <div class="container">
+        <h2 class="section-heading">Roadmap</h2>
+        <div class="roadmap-grid">
+          <div class="roadmap-col">
+            <p class="roadmap-col-title">✓ Done</p>
+            <ul class="roadmap-list">
+              <li>Auto login to LMU portal</li>
+              <li>Continuous connection monitoring</li>
+              <li>Auto-reconnect across campus APs</li>
+              <li>Sleep/wake detection</li>
+              <li>Network change detection (instant roam)</li>
+              <li>DHCP renewal on stale leases</li>
+              <li>Pro licensing system</li>
+              <li>Auto-update pipeline</li>
+            </ul>
+          </div>
+          <div class="roadmap-col">
+            <p class="roadmap-col-title">Coming soon</p>
+            <ul class="roadmap-list">
+              <li>Multi-network profiles</li>
+              <li>NetPulse integration</li>
+              <li>Code-signed releases</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== RELEASE NOTES ===================== -->
+    <section class="section release-section" id="releases">
+      <div class="container">
+        <h2 class="section-heading">Latest release</h2>
+        <div class="release-box" id="releaseBox">
+          <div class="release-loading">Loading release notes…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section class="section faq-section" id="faq">
+      <div class="container">
+        <h2 class="section-heading">Questions</h2>
+        <div class="faq-list">
+
+          <div class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              Does NexLink store my password?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer" hidden>
+              <p>Yes — but only on your own machine, encrypted with <a
+                  href="https://github.com/highnine699-del/nexlink-updates/blob/main/NexLink-WPF.ps1#L180"
+                  target="_blank" rel="noopener noreferrer">Windows DPAPI</a>. DPAPI ties the encrypted file to your
+                Windows user account,
+                so even if someone copied the file off your PC they couldn't read it. Your password is never sent
+                anywhere
+                except LMU's own portal over HTTPS. See the <a href="#trust">trust section</a> for the full details.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              Is this safe?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer" hidden>
+              <p>Yes. NexLink is fully open source — every line is on GitHub. Your password is encrypted locally using
+                Windows DPAPI and is only ever sent to LMU's own portal over HTTPS. Nothing is collected, logged
+                remotely,
+                or shared.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              Does it cost anything?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer" hidden>
+              <p>The core app is completely free. There's a Pro version with theme customization — same reliable
+                connection engine, just a cosmetic upgrade.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              What if I have a problem?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer" hidden>
+              <p>Open the Advanced panel (gear icon in the app) — the live log shows exactly what the app is doing and
+                is
+                usually enough to diagnose an issue. If you're stuck, open an issue on <a
+                  href="https://github.com/highnine699-del/nexlink-updates/issues" target="_blank"
+                  rel="noopener noreferrer">GitHub</a>.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              Does it run at startup?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer" hidden>
+              <p>Only if you tell it to. The installer has an optional "Start automatically when I log into Windows"
+                checkbox — it's unchecked by default. You decide.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== TESTIMONIALS (hidden until real quotes exist) ===================== -->
+    <!--
   <section class="section testimonials-section" id="testimonials">
     <div class="container">
       <h2 class="section-heading">What students are saying</h2>
@@ -537,20 +555,22 @@
   </section>
   -->
 
-  <!-- ===================== FINAL CTA ===================== -->
-  <section class="section cta-section" id="download">
-    <div class="container cta-inner">
-      <h2 class="cta-heading">Stop logging in manually.</h2>
-      <div class="hero-cta-wrap">
-        <a href="https://github.com/highnine699-del/nexlink-updates/releases/latest/download/NexLink-Installer.exe"
-          class="btn-primary btn-primary--large" target="_blank" rel="noopener noreferrer">
-          Download NexLink
-        </a>
-        <p class="btn-platform">Windows 10 &amp; 11</p>
+    <!-- ===================== FINAL CTA ===================== -->
+    <section class="section cta-section" id="download">
+      <div class="container cta-inner">
+        <h2 class="cta-heading">Stop logging in manually.</h2>
+        <div class="hero-cta-wrap">
+          <a href="https://github.com/highnine699-del/nexlink-updates/releases/latest/download/NexLink-Installer.exe"
+            class="btn-primary btn-primary--large" target="_blank" rel="noopener noreferrer">
+            Download NexLink
+          </a>
+          <p class="btn-platform">Windows 10 &amp; 11</p>
+        </div>
+        <p class="hero-meta">Free · Open source · <span id="ctaVersion">v1.3.13</span></p>
       </div>
-      <p class="hero-meta">Free · Open source · <span id="ctaVersion">v1.3.13</span></p>
-    </div>
-  </section>
+    </section>
+
+  </main>
 
   <!-- ===================== FOOTER ===================== -->
   <footer class="footer">

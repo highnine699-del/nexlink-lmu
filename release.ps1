@@ -17,8 +17,8 @@ $ErrorActionPreference = 'Stop'
 # would otherwise kill this script even on success. Harmless no-op on older
 # PowerShell versions that don't have this setting.
 $global:PSNativeCommandUseErrorActionPreference = $false
-$ProjectDir = "c:\Users\AY ADVANCE TECH\Documents\VIBE_CODER\wifi setup"
-$UpdatesRepoDir = "c:\Users\AY ADVANCE TECH\Documents\VIBE_CODER\nexlink-updates"
+$ProjectDir = $PSScriptRoot
+$UpdatesRepoDir = Join-Path (Split-Path $PSScriptRoot -Parent) "nexlink-updates"
 
 Set-Location $ProjectDir
 
@@ -128,7 +128,16 @@ if (-not (Test-Path ".\NexLink.exe")) {
 
 # 6. Rebuild the installer
 Write-Host "[4/8] Rebuilding installer..." -ForegroundColor Green
-$innoPath = "C:\Users\AY ADVANCE TECH\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
+$innoCandidates = @(
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+)
+$innoPath = $innoCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $innoPath) {
+    Write-Host "ERROR: Inno Setup 6 (ISCC.exe) not found. Install from https://jrsoftware.org/isinfo.php" -ForegroundColor Red
+    exit 1
+}
 & $innoPath ".\NexLink-installer.iss"
 if (-not (Test-Path ".\NexLink-Installer.exe")) {
     Write-Host "ERROR: NexLink-Installer.exe was not created. Aborting release." -ForegroundColor Red

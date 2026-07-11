@@ -11,31 +11,31 @@ addEventListener('fetch', event => {
 
 async function handleRequest(request) {
   const url = new URL(request.url)
-  
+
   // Handle Paystack callback
   if (url.pathname === '/callback') {
     const reference = url.searchParams.get('reference')
-    
+
     if (!reference) {
       return new Response('Invalid request', { status: 400 })
     }
-    
+
     // Input validation: reference should be alphanumeric with hyphens/underscores only
     if (!/^[a-zA-Z0-9_-]+$/.test(reference)) {
       return new Response('Invalid request', { status: 400 })
     }
-    
+
     try {
       // Verify transaction with Paystack
       const verifyResponse = await verifyPaystackTransaction(reference)
-      
+
       if (!verifyResponse.success) {
         return new Response('Unable to process request', { status: 400 })
       }
-      
+
       // Generate and sign license key deterministically from reference
       const licenseKey = await generateAndSignLicenseKey(reference)
-      
+
       // Return HTML page with the license key
       const html = `
 <!DOCTYPE html>
@@ -153,7 +153,7 @@ async function handleRequest(request) {
 </body>
 </html>
       `
-      
+
       return new Response(html, {
         headers: { 'Content-Type': 'text/html;charset=UTF-8' }
       })
@@ -238,8 +238,11 @@ async function verifyPaystackTransaction(reference) {
       'Authorization': `Bearer ${secretKey}`
     }
   })
-  
+
   const data = await response.json()
+  if (!response.ok) {
+    return { success: false }
+  }
   const success = data.status && data.data && data.data.status === 'success'
   return { success }
 }
@@ -312,7 +315,7 @@ async function generateAndSignLicenseKey(reference) {
     x: ECDSA_X,
     y: ECDSA_Y
   }
-  
+
   const privateKey = await crypto.subtle.importKey(
     'jwk',
     jwk,
@@ -320,20 +323,20 @@ async function generateAndSignLicenseKey(reference) {
     false,
     ['sign']
   )
-  
+
   // Sign the reference bytes
   const encoder = new TextEncoder()
   const data = encoder.encode(reference)
-  
+
   const signature = await crypto.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     privateKey,
     data
   )
-  
+
   // Convert to base64 and format as base64(reference).base64(signature)
   const referenceBase64 = btoa(String.fromCharCode(...new Uint8Array(data)))
   const signatureBase64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-  
+
   return `${referenceBase64}.${signatureBase64}`
 }

@@ -8,38 +8,11 @@ bin/
 obj/
 ecdsa_private_key.json
 
+# Deployment guide contains private key values — never commit
+DEPLOYMENT_GUIDE.md
+
 # Compiled binaries - distributed via GitHub Releases, not tracked in source
 NexLink.exe
 NexLink-Installer.exe
 LMU-Auto-Connect-Installer.exe
 LMU-AutoConnect.exe
-
-# Local scratch/debug scripts (not part of the shipped product)
-get_info*.py
-get_file*.py
-get_stats.py
-get_timestamp*.py
-run_and_*.py
-run_and_*.bat
-run_ps_*.py
-run_ps_*.bat
-run_recompile*.py
-run_recompile*.bat
-check_files.py
-check_files.bat
-check_final_state.py
-check_timestamp*.py
-direct_check.py
-direct_recompile.py
-final_check.py
-final_compile.py
-final_recompile.bat
-final_report.py
-print_info.py
-show_info.bat
-simple_*.py
-simple_*.bat
-test_recompile.bat
-verify_timestamps.py
-write_info.py
-manual_recompile.ps1

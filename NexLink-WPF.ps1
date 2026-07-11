@@ -58,7 +58,7 @@ function Get-CurrentSSID {
     try {
         $result = netsh wlan show interfaces 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
-        $line = $result | Select-String '^\s*SSID\s*:\s*(.+)$'
+        $line = $result | Select-String '^\s{1,4}SSID\s*:\s*(.+)$'
         if ($line) { return ($line.Matches[0].Groups[1].Value).Trim() }
     }
     catch {}
@@ -519,7 +519,9 @@ function Restart-WifiConnection {
         }
     }
     Start-Sleep -Seconds 3
-    return $targetSsid
+    # Return the SSID we actually ended up on, not the originally-targeted one.
+    # $script:LastKnownSSID is updated on every successful connect above.
+    return if ($script:LastKnownSSID) { $script:LastKnownSSID } else { $targetSsid }
 }
 
 function Test-PortalSession {
@@ -577,6 +579,7 @@ function Invoke-PortalLogin {
             if ($url -eq $loginUrls[-1]) { throw $_ }
         }
     }
+    throw "Portal login failed: all URLs exhausted without a successful response."
 }
 
 function Invoke-PortalLogout {
@@ -819,9 +822,16 @@ function Limit-LogFile {
             $trimmed = $lines[-$MaxLogLines..-1]
             Set-Content -Path $LogFile -Value $trimmed -Encoding UTF8
         }
-        # Also trim in-memory array to prevent unbounded growth
-        if ($script:logLines.Count -gt ($MaxLogLines * 2)) {
-            $script:logLines = $script:logLines[-$MaxLogLines..-1]
+        # Also trim in-memory array to prevent unbounded growth.
+        # Use the same lock as Add-Log to prevent a race with background-thread callers.
+        [System.Threading.Monitor]::Enter($script:LogLock)
+        try {
+            if ($script:logLines.Count -gt ($MaxLogLines * 2)) {
+                $script:logLines = $script:logLines[-$MaxLogLines..-1]
+            }
+        }
+        finally {
+            [System.Threading.Monitor]::Exit($script:LogLock)
         }
     }
     catch {}
@@ -1022,23 +1032,28 @@ function Show-LicenseInputDialog {
 }
 
 # Check for existing Pro license on startup
-$savedLicense = Get-ProLicense
-if ($savedLicense -and (Verify-ProLicense $savedLicense.LicenseKey)) {
-    try {
-        $currentMachineHash = Get-MachineFingerprint
-        $referenceBytesForCheck = [Convert]::FromBase64String($savedLicense.LicenseKey.Split(".")[0])
-        $referenceForCheck = [System.Text.Encoding]::UTF8.GetString($referenceBytesForCheck)
-        if (Verify-DeviceToken $referenceForCheck $currentMachineHash $savedLicense.DeviceToken) {
-            $script:IsProLicensed = $true
-            Add-Log "Pro license detected and valid for this device."
+try {
+    $savedLicense = Get-ProLicense
+    if ($savedLicense -and (Verify-ProLicense $savedLicense.LicenseKey)) {
+        try {
+            $currentMachineHash = Get-MachineFingerprint
+            $referenceBytesForCheck = [Convert]::FromBase64String($savedLicense.LicenseKey.Split(".")[0])
+            $referenceForCheck = [System.Text.Encoding]::UTF8.GetString($referenceBytesForCheck)
+            if (Verify-DeviceToken $referenceForCheck $currentMachineHash $savedLicense.DeviceToken) {
+                $script:IsProLicensed = $true
+                Add-Log "Pro license detected and valid for this device."
+            }
+            else {
+                Add-Log "Pro license found but it's bound to a different device (or predates device-token verification) - Pro features disabled here. Re-activate to restore."
+            }
         }
-        else {
-            Add-Log "Pro license found but it's bound to a different device (or predates device-token verification) - Pro features disabled here. Re-activate to restore."
+        catch {
+            Add-Log "Startup license check failed unexpectedly: $($_.Exception.Message)"
         }
     }
-    catch {
-        Add-Log "Startup license check failed unexpectedly: $($_.Exception.Message)"
-    }
+}
+catch {
+    Add-Log "Startup license check failed (license file may be corrupt or unreadable): $($_.Exception.Message)"
 }
 
 # Theme definitions
@@ -1351,9 +1366,14 @@ function Invoke-ImmediateConnectivityCheck {
 
 # Power mode change event handler — fires an immediate check on wake from sleep.
 $powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.SystemEvents]) -EventName "PowerModeChanged" -Action {
-    if ($EventArgs.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
-        Add-Log "System resumed from sleep."
-        Invoke-ImmediateConnectivityCheck
+    try {
+        if ($EventArgs.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
+            Add-Log "System resumed from sleep."
+            Invoke-ImmediateConnectivityCheck
+        }
+    }
+    catch {
+        try { Add-Log "PowerModeChanged handler error: $($_.Exception.Message)" } catch { Write-Host "[NexLink] PowerModeChanged handler error: $($_.Exception.Message)" }
     }
 }
 
@@ -1740,12 +1760,16 @@ $window.Add_Closed({
     # Safety net: if the window closes through any path we haven't
     # explicitly handled (Alt+F4, system menu, etc.), still clean up
     # properly instead of leaving a zombie process or orphaned tray icon.
-    $timer.Stop()
-    $trayIcon.Visible = $false
-    try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
-    try { [System.Net.NetworkInformation.NetworkChange]::remove_NetworkAddressChanged($script:NetworkAddressChangedHandler) } catch {}
-    try { $script:InstanceMutex.ReleaseMutex() } catch {}
-    [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+    # Guard with $script:allowExit so Invoke-GracefulExit (which calls
+    # $window.Close() itself) doesn't double-fire InvokeShutdown.
+    if (-not $script:allowExit) {
+        $timer.Stop()
+        $trayIcon.Visible = $false
+        try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
+        try { [System.Net.NetworkInformation.NetworkChange]::remove_NetworkAddressChanged($script:NetworkAddressChangedHandler) } catch {}
+        try { $script:InstanceMutex.ReleaseMutex() } catch {}
+        [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+    }
 })
 $window.Show()
 [System.Windows.Threading.Dispatcher]::Run()
