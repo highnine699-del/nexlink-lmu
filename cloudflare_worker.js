@@ -1,9 +1,10 @@
 ﻿// Cloudflare Worker for NexLink Pro license generation
 // Environment variables needed:
 // - PAYSTACK_SECRET_KEY: Your Paystack secret key
-// - ECDSA_D: Base64-encoded private key d parameter (from ecdsa_private_key.json)
-// - ECDSA_X: Base64-encoded public key x parameter (from ecdsa_private_key.json)
-// - ECDSA_Y: Base64-encoded public key y parameter (from ecdsa_private_key.json)
+// - ECDSA_D: Base64-encoded private key d parameter
+// - ECDSA_X: Base64-encoded public key x parameter
+// - ECDSA_Y: Base64-encoded public key y parameter
+// - RESEND_API_KEY: Resend API key for error report emails
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request))
@@ -226,6 +227,90 @@ async function handleRequest(request) {
     catch (error) {
       console.error('[NexLink Worker] /activate error:', error)
       return new Response('Unable to process request', { status: 500 })
+    }
+  }
+
+  // Handle error reports from the app
+  if (url.pathname === '/report' && request.method === 'POST') {
+    try {
+      const body = await request.json()
+      const { appVersion, os, adapter, machineHashPrefix, timestamp, comment, logLines } = body
+
+      // Basic validation
+      if (!appVersion || !Array.isArray(logLines) || logLines.length === 0) {
+        return new Response('Invalid report', { status: 400 })
+      }
+
+      // Rate limit: one report per machineHashPrefix per hour using KV
+      // Key format: report_rl:<prefix> — value is ISO timestamp of last report
+      if (machineHashPrefix && typeof machineHashPrefix === 'string' && /^[A-Za-z0-9+/=]{1,8}$/.test(machineHashPrefix)) {
+        const rlKey = 'report_rl:' + machineHashPrefix
+        const lastReport = await LICENSE_ACTIVATIONS.get(rlKey)
+        if (lastReport) {
+          const elapsed = (Date.now() - new Date(lastReport).getTime()) / 1000 / 60
+          if (elapsed < 60) {
+            return new Response('Rate limit: please wait before sending another report', { status: 429 })
+          }
+        }
+        await LICENSE_ACTIVATIONS.put(rlKey, new Date().toISOString(), { expirationTtl: 3600 })
+      }
+
+      // Sanitise log lines — strip any accidentally included passwords
+      const safeLog = logLines
+        .slice(0, 500) // cap at 500 lines
+        .map(l => String(l).substring(0, 300)) // cap line length
+        .join('\n')
+
+      const safeComment = comment ? String(comment).substring(0, 500) : '(no comment)'
+      const safeVersion = String(appVersion).substring(0, 20)
+      const safeOs = String(os || 'unknown').substring(0, 100)
+      const safeAdapter = String(adapter || 'unknown').substring(0, 100)
+      const safeTimestamp = String(timestamp || new Date().toISOString()).substring(0, 30)
+      const safePrefix = String(machineHashPrefix || 'unknown').substring(0, 8)
+
+      const emailHtml = `
+<div style="font-family:monospace;font-size:13px;color:#1a1a1a">
+  <h2 style="color:#7c3aed">NexLink Error Report</h2>
+  <table style="border-collapse:collapse;margin-bottom:16px">
+    <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Version</td><td>${safeVersion}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:bold">OS</td><td>${safeOs}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Adapter</td><td>${safeAdapter}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Device ID</td><td>${safePrefix}</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Time</td><td>${safeTimestamp}</td></tr>
+  </table>
+  <h3 style="color:#374151">User Comment</h3>
+  <p style="background:#f3f4f6;padding:12px;border-radius:6px">${safeComment}</p>
+  <h3 style="color:#374151">Log (last 24h)</h3>
+  <pre style="background:#111827;color:#22d3aa;padding:16px;border-radius:6px;overflow:auto;font-size:11px;white-space:pre-wrap">${safeLog}</pre>
+</div>`
+
+      const emailRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: 'NexLink Reports <onboarding@resend.dev>',
+          to: ['highnine699@gmail.com'],
+          subject: `NexLink Error Report — v${safeVersion} — ${safeTimestamp}`,
+          html: emailHtml
+        })
+      })
+
+      if (!emailRes.ok) {
+        console.error('[NexLink Worker] Resend API error:', emailRes.status, await emailRes.text())
+        return new Response('Failed to send report', { status: 500 })
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    catch (error) {
+      console.error('[NexLink Worker] /report error:', error)
+      return new Response('Unable to process report', { status: 500 })
     }
   }
 

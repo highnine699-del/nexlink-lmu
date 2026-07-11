@@ -236,6 +236,159 @@ function Clear-DnsCache {
     catch {}
 }
 
+function Invoke-SendErrorReport {
+    # Collect last 24 hours of log lines
+    $cutoff = (Get-Date).AddHours(-24)
+    $recentLines = @()
+    try {
+        if (Test-Path $LogFile) {
+            $recentLines = Get-Content $LogFile -ErrorAction SilentlyContinue |
+                Where-Object {
+                    if ($_ -match '^\[(\d{2}:\d{2}:\d{2})\]') {
+                        # Log lines only have HH:mm:ss — include all lines as
+                        # filtering by time-of-day alone isn't reliable across
+                        # midnight, so include everything in the file and cap at 500 lines.
+                        $true
+                    } else { $true }
+                } | Select-Object -Last 500
+        }
+    }
+    catch {}
+
+    # Also include in-memory lines that may not be flushed yet
+    [System.Threading.Monitor]::Enter($script:LogLock)
+    try {
+        $memLines = $script:logLines | Select-Object -Last 100
+    }
+    finally {
+        [System.Threading.Monitor]::Exit($script:LogLock)
+    }
+
+    $allLines = @($recentLines) + @($memLines) | Select-Object -Unique | Select-Object -Last 500
+
+    if ($allLines.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "No log data found to send.",
+            "Send Error Report",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        ) | Out-Null
+        return
+    }
+
+    # Show comment dialog
+    $reportForm = New-Object System.Windows.Forms.Form
+    $reportForm.Text = "Send Error Report"
+    $reportForm.Size = New-Object System.Drawing.Size(420, 240)
+    $reportForm.StartPosition = "CenterScreen"
+    $reportForm.FormBorderStyle = "FixedDialog"
+    $reportForm.MaximizeBox = $false
+    $reportForm.TopMost = $false
+    $reportForm.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#14171F")
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "Describe what went wrong (optional):"
+    $lbl.Location = New-Object System.Drawing.Point(16, 16)
+    $lbl.Size = New-Object System.Drawing.Size(380, 20)
+    $lbl.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#F5F5F7")
+    $lbl.BackColor = [System.Drawing.Color]::Transparent
+
+    $txt = New-Object System.Windows.Forms.TextBox
+    $txt.Location = New-Object System.Drawing.Point(16, 44)
+    $txt.Size = New-Object System.Drawing.Size(378, 80)
+    $txt.Multiline = $true
+    $txt.ScrollBars = "Vertical"
+    $txt.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#0B0D13")
+    $txt.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#F5F5F7")
+    $txt.BorderStyle = "FixedSingle"
+
+    $infoLbl = New-Object System.Windows.Forms.Label
+    $infoLbl.Text = "The last 24hrs of connection logs will be included. No passwords are sent."
+    $infoLbl.Location = New-Object System.Drawing.Point(16, 132)
+    $infoLbl.Size = New-Object System.Drawing.Size(380, 32)
+    $infoLbl.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#9CA3AF")
+    $infoLbl.BackColor = [System.Drawing.Color]::Transparent
+
+    $btnSend = New-Object System.Windows.Forms.Button
+    $btnSend.Text = "Send Report"
+    $btnSend.Location = New-Object System.Drawing.Point(196, 170)
+    $btnSend.Size = New-Object System.Drawing.Size(100, 30)
+    $btnSend.DialogResult = "OK"
+    $btnSend.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#0EA5E9")
+    $btnSend.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#FFFFFF")
+    $btnSend.FlatStyle = "Flat"
+
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Text = "Cancel"
+    $btnCancel.Location = New-Object System.Drawing.Point(304, 170)
+    $btnCancel.Size = New-Object System.Drawing.Size(90, 30)
+    $btnCancel.DialogResult = "Cancel"
+    $btnCancel.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#374151")
+    $btnCancel.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#F5F5F7")
+    $btnCancel.FlatStyle = "Flat"
+
+    $reportForm.Controls.AddRange(@($lbl, $txt, $infoLbl, $btnSend, $btnCancel))
+    $reportForm.AcceptButton = $btnSend
+    $reportForm.CancelButton = $btnCancel
+
+    $result = $reportForm.ShowDialog()
+    $reportForm.Dispose()
+
+    if ($result -ne "OK") { return }
+
+    $comment = $txt.Text.Trim()
+
+    # Gather system metadata
+    $osCaption = try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).Caption } catch { "unknown" }
+    $adapterInfo = Get-WifiAdapter
+    $adapterDesc = if ($adapterInfo) { "$($adapterInfo.Name) — $($adapterInfo.InterfaceDescription)" } else { "unknown" }
+    $machineHash = try { Get-MachineFingerprint } catch { "" }
+    $machinePrefix = if ($machineHash.Length -ge 8) { $machineHash.Substring(0, 8) } else { $machineHash }
+
+    $payload = @{
+        appVersion       = $NexLinkVersion
+        os               = $osCaption
+        adapter          = $adapterDesc
+        machineHashPrefix = $machinePrefix
+        timestamp        = (Get-Date -Format 'o')
+        comment          = $comment
+        logLines         = @($allLines)
+    } | ConvertTo-Json -Compress -Depth 3
+
+    try {
+        $sendReportBtn.IsEnabled = $false
+        $sendReportBtn.Content = "Sending..."
+        $resp = Invoke-WebRequest `
+            -Uri "https://nexlink-license.highnine699.workers.dev/report" `
+            -Method Post `
+            -Body $payload `
+            -ContentType "application/json" `
+            -UseBasicParsing `
+            -TimeoutSec 15 `
+            -ErrorAction Stop
+        Add-Log "Error report sent successfully."
+        [System.Windows.Forms.MessageBox]::Show(
+            "Report sent. Thank you — this helps make NexLink better.",
+            "Report Sent",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        ) | Out-Null
+    }
+    catch {
+        Add-Log "Failed to send error report: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show(
+            "Could not send the report. Check your connection and try again.`n`n$($_.Exception.Message)",
+            "Send Failed",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    }
+    finally {
+        $sendReportBtn.IsEnabled = $true
+        $sendReportBtn.Content = "Send Error Report"
+    }
+}
+
 function Test-ForUpdate {
     # Fully defensive by design: any failure here (network, bad JSON,
     # malformed version string) must be swallowed silently and never
@@ -1530,8 +1683,16 @@ $timer.Add_Tick({
         $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
     }
     catch {
-        Add-Log "ERROR: $($_.Exception.Message)"
+        Add-Log "ERROR in monitor tick: $($_.Exception.Message)"
         Set-Status "Error - see log" "Error"
+        # Reset fail counters so the next tick starts fresh rather than
+        # immediately triggering another reconnect on a potentially stale state.
+        $script:wifiFailCount = 0
+        $script:portalFailCount = 0
+        $script:portalUnknownCount = 0
+        # Ensure the timer interval is back to normal in case it was set to 1ms
+        # by Invoke-ImmediateConnectivityCheck just before the error occurred.
+        $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
     }
 })
 
@@ -1623,6 +1784,9 @@ $advancedXaml = @"
                         FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
                 <Button Name="OpenLogBtn" Content="Open Log File" Width="120" Height="32"
                         Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                <Button Name="SendReportBtn" Content="Send Error Report" Width="140" Height="32"
+                        Background="#0EA5E9" Foreground="#F5F5F7" BorderThickness="0"
                         FontFamily="Segoe UI" FontSize="11" Cursor="Hand"/>
             </StackPanel>
             
@@ -1653,6 +1817,7 @@ $enterLicenseBtn = $advWindow.FindName("EnterLicenseBtn")
 $deactivateLicenseBtn = $advWindow.FindName("DeactivateLicenseBtn")
 $themePickerBtn = $advWindow.FindName("ThemePickerBtn")
 $openLogBtn = $advWindow.FindName("OpenLogBtn")
+$sendReportBtn = $advWindow.FindName("SendReportBtn")
 $advVersionText = $advWindow.FindName("AdvVersionText")
 $advVersionText.Text = "v$NexLinkVersion"
 
@@ -1731,6 +1896,11 @@ $openLogBtn.Add_Click({
     else {
         [System.Windows.Forms.MessageBox]::Show("Log file not found.", "NexLink") | Out-Null
     }
+})
+
+# Send error report
+$sendReportBtn.Add_Click({
+    Invoke-SendErrorReport
 })
 
 # Update log viewer when advanced panel opens
