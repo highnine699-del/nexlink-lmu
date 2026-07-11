@@ -350,7 +350,7 @@ Commits `ce3ea56`, `74a3d69`, `b72685f`, `257be5b`
 
 ---
 
-## Final debug confirmation (`f5c362a` — current HEAD)
+## Final debug confirmation (`f5c362a`)
 
 All checks passed:
 - `NEXLINK_PARSE_OK` — no syntax errors in NexLink-WPF.ps1
@@ -371,6 +371,123 @@ All checks passed:
 
 ---
 
+## In-app error reporting + timer resilience (`7dd0bb3`)
+
+### `NexLink-WPF.ps1`:
+
+**Timer tick catch block fixed (app can no longer become a zombie):**
+- Old catch: only logged error and set status. If an exception escaped the tick loop, the timer kept running but fail counters were wrong and the interval could be stuck at 1ms (from `Invoke-ImmediateConnectivityCheck`), causing a CPU spin.
+- New catch:
+  - Log message changed from `"ERROR: ..."` to `"ERROR in monitor tick: ..."` for clarity
+  - `$script:wifiFailCount = 0` — reset so next tick starts clean
+  - `$script:portalFailCount = 0` — reset
+  - `$script:portalUnknownCount = 0` — reset
+  - `$timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)` — restores to 5s in case it was stuck at 1ms
+
+**`Invoke-SendErrorReport` function added** (placed after `Clear-DnsCache`):
+- Reads last 500 lines from `$LogFile` on disk
+- Also reads last 100 lines from `$script:logLines` in-memory array under `$script:LogLock`
+- Merges and deduplicates, caps at 500 lines
+- Shows WinForms dialog styled to match app dark theme:
+  - Label: "Describe what went wrong (optional):"
+  - Multi-line text box
+  - Info label: "The last 24hrs of connection logs will be included. No passwords are sent."
+  - "Send Report" button (sky blue `#0EA5E9`)
+  - "Cancel" button
+- On confirm: collects OS caption, adapter name/description, anonymous machine hash prefix (8 chars), app version, ISO timestamp
+- Builds JSON payload and POSTs to `https://nexlink-license.highnine699.workers.dev/report`
+- `$sendReportBtn.IsEnabled = $false` and content changed to "Sending..." during request
+- On success: logs "Error report sent successfully." and shows confirmation MessageBox
+- On failure: logs error and shows error MessageBox with exception message
+- `finally` block always restores button state
+
+**Advanced panel XAML changes:**
+- `OpenLogBtn` `Margin` changed from none to `Margin="0,0,8,0"` to make room
+- New button added: `Name="SendReportBtn"` `Content="Send Error Report"` `Width="140"` `Height="32"` `Background="#0EA5E9"` (sky blue) `Foreground="#F5F5F7"`
+
+**`FindName` wiring added:**
+- `$sendReportBtn = $advWindow.FindName("SendReportBtn")`
+
+**Click handler added:**
+```powershell
+$sendReportBtn.Add_Click({
+    Invoke-SendErrorReport
+})
+```
+
+### `cloudflare_worker.js`:
+
+**Header comment updated:**
+- Added `// - RESEND_API_KEY: Resend API key for error report emails`
+
+**New `/report` POST endpoint added** (before health check return):
+- Validates `appVersion` present and `logLines` is a non-empty array
+- Rate limiting: uses `LICENSE_ACTIVATIONS` KV with key `report_rl:<machineHashPrefix>`, TTL 3600s — rejects with 429 if last report was less than 60 minutes ago
+- `machineHashPrefix` validated against regex `^[A-Za-z0-9+/=]{1,8}$` before use as KV key
+- Sanitisation of all fields:
+  - `logLines`: capped at 500 lines, each line capped at 300 chars
+  - `comment`: capped at 500 chars, defaults to "(no comment)"
+  - `appVersion`: capped at 20 chars
+  - `os`, `adapter`: capped at 100 chars
+  - `timestamp`: capped at 30 chars
+  - `machineHashPrefix`: capped at 8 chars
+- Builds HTML email with styled table (version, OS, adapter, device ID, timestamp), comment box, and monospace log pre block
+- POSTs to `https://api.resend.com/emails` with:
+  - `from`: `NexLink Reports <onboarding@resend.dev>`
+  - `to`: `["highnine699@gmail.com"]`
+  - `subject`: `NexLink Error Report — v{version} — {timestamp}`
+  - Authorization: `Bearer ${RESEND_API_KEY}`
+- Logs `console.error` if Resend API returns non-ok
+- Returns `{ success: true }` on success
+- Outer catch logs `console.error('[NexLink Worker] /report error:', error)`
+
+**Cloudflare secrets updated:**
+- `RESEND_API_KEY` added via `wrangler secret put RESEND_API_KEY --name nexlink-license`
+
+**Worker deployed:**
+- `wrangler deploy cloudflare_worker.js --name nexlink-license --compatibility-date 2026-07-11`
+- Version ID: `9059ae33-3eaf-4708-b108-4a9304ddc267`
+
+### `docs/index.html`:
+- FAQ "What if I have a problem?" answer updated to mention the **Send Error Report** button in the Advanced panel
+- Roadmap "Done" column: added "In-app error reporting" item
+
+---
+
+## release.ps1 SHA256 fix (`c631d74`)
+
+### `release.ps1`:
+- `Get-FileHash` cmdlet replaced with .NET `[System.Security.Cryptography.SHA256]` directly — `Get-FileHash` was unavailable when release.ps1 ran under PowerShell 7.6.3
+- New implementation:
+  ```powershell
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  $hashBytes = $sha256.ComputeHash([System.IO.File]::ReadAllBytes((Resolve-Path ".\NexLink-Installer.exe")))
+  $sha256.Dispose()
+  $hash = [System.BitConverter]::ToString($hashBytes) -replace '-', ''
+  ```
+
+---
+
+## v1.3.16 release (`4faa4c6` — current HEAD)
+
+- `NexLink-WPF.ps1` — `$NexLinkVersion` bumped to `1.3.16`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.16.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.16`
+- `latest.json` (nexlink-updates repo) — version, installer_url, sha256 updated
+- SHA256 of installer: `C08C5635F33D79628B29833B6DAB79861532EA144DAC51801669EE6AF3AD420E`
+
+---
+
+## v1.3.17 release (2026-07-12)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.17`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.17.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.17`
+- `README.txt` — version bumped to `v1.3.17`
+- SHA256 of installer: `137D2E43FA7C8C3ADAEA9BB80867188E8D9F8E46BC6FF6F0C5B3D2074226D963`
+- Release notes: fix: Advanced panel buttons wrap to second row, README.txt version auto-bumped on release, CHANGELOG auto-updated on release
+---
+
 ## Pending manual actions (not in code)
 
 1. **Create OG image** — `docs/og-image.png` is currently a 256×256 icon. Replace with 1200×630 image for proper WhatsApp/Telegram link preview cards.
@@ -379,4 +496,4 @@ All checks passed:
 
 ---
 
-*Document generated: July 2026. Covers commits `ce3ea56` (v1.3.10) through `f5c362a` (HEAD).*
+*Last updated: July 2026. Covers commits `ce3ea56` (v1.3.10) through `4faa4c6` (v1.3.16 — current HEAD).*
