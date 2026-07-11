@@ -618,67 +618,72 @@ $xaml = @"
         Background="Transparent"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen">
-    <Border Name="MainBorder" Background="#0B0D13" CornerRadius="12" BorderBrush="#1F2937" BorderThickness="1">
+    <Border Name="MainBorder" Background="#0B0F17" CornerRadius="16" BorderBrush="#2A3142" BorderThickness="1">
         <Grid>
             <!-- Custom Title Bar -->
-            <Grid Name="TitleBar" Height="40" VerticalAlignment="Top" Background="#14171F">
+            <Grid Name="TitleBar" Height="40" VerticalAlignment="Top" Background="#0B0F17">
                 <TextBlock Text="NexLink" FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold" 
-                           Foreground="#F5F5F7" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                           Foreground="#E6E6EB" VerticalAlignment="Center" Margin="16,0,0,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
                     <Button Name="MinimizeBtn" Content="─" Width="30" Height="30" 
-                            Background="Transparent" Foreground="#9CA3AF" 
+                            Background="Transparent" Foreground="#8A93A6" 
                             BorderThickness="0" FontFamily="Segoe UI" FontSize="16"
                             Cursor="Hand"/>
                     <Button Name="CloseBtn" Content="✕" Width="30" Height="30" 
-                            Background="Transparent" Foreground="#9CA3AF" 
+                            Background="Transparent" Foreground="#8A93A6" 
                             BorderThickness="0" FontFamily="Segoe UI" FontSize="14"
                             Cursor="Hand"/>
                 </StackPanel>
             </Grid>
             
-            <!-- Status Orb with Pulse Animation -->
-            <Ellipse Name="StatusOrb" Width="120" Height="120" 
-                     Fill="#22D3AA" Stroke="#22D3AA" StrokeThickness="2"
-                     VerticalAlignment="Top" Margin="0,60,0,0" HorizontalAlignment="Center">
-                <Ellipse.Triggers>
-                    <EventTrigger RoutedEvent="Ellipse.Loaded">
+            <!-- Status indicator: infinity-ribbon Path instead of a plain circle.
+                 Still a Shape (Fill + Stroke), so Set-Status's existing
+                 $statusOrb.Fill / $statusOrb.Stroke assignments work unchanged. -->
+            <Path Name="StatusOrb"
+                  Data="M10,30 C10,15 25,10 35,20 C45,30 55,30 65,20 C75,10 90,15 90,30 C90,45 75,50 65,40 C55,30 45,30 35,40 C25,50 10,45 10,30 Z"
+                  Stretch="Uniform" Width="160" Height="96"
+                  Fill="#22E0A6" Stroke="#22E0A6" StrokeThickness="9" StrokeLineJoin="Round"
+                  VerticalAlignment="Top" Margin="0,72,0,0" HorizontalAlignment="Center">
+                <Path.Triggers>
+                    <EventTrigger RoutedEvent="Path.Loaded">
                         <BeginStoryboard>
                             <Storyboard RepeatBehavior="Forever" Name="PulseStoryboard">
-                                <DoubleAnimation Storyboard.TargetProperty="(Ellipse.Opacity)"
+                                <DoubleAnimation Storyboard.TargetProperty="(Path.Opacity)"
                                                From="1.0" To="0.7" Duration="0:0:1.5"
                                                AutoReverse="True"/>
                             </Storyboard>
                         </BeginStoryboard>
                     </EventTrigger>
-                </Ellipse.Triggers>
-            </Ellipse>
+                </Path.Triggers>
+            </Path>
             
             <!-- Status Text -->
             <TextBlock Name="StatusText" Text="Starting..." 
                        FontFamily="Segoe UI" FontSize="22" FontWeight="SemiBold"
-                       Foreground="#F5F5F7" TextAlignment="Center"
-                       VerticalAlignment="Top" Margin="0,200,0,0" HorizontalAlignment="Center"/>
+                       Foreground="#E6E6EB" TextAlignment="Center"
+                       VerticalAlignment="Top" Margin="0,196,0,0" HorizontalAlignment="Center"/>
             
             <!-- Network Name -->
             <TextBlock Name="NetworkName" Text="" 
                        FontFamily="Segoe UI" FontSize="12" FontWeight="Regular"
-                       Foreground="#9CA3AF" TextAlignment="Center"
-                       VerticalAlignment="Top" Margin="0,240,0,0" HorizontalAlignment="Center"/>
+                       Foreground="#8A93A6" TextAlignment="Center"
+                       VerticalAlignment="Top" Margin="0,236,0,0" HorizontalAlignment="Center"/>
             
             <!-- Primary Action Button -->
             <Button Name="ActionButton" Content="Disconnect" 
-                    Width="200" Height="44" 
+                    Width="200" Height="48" 
                     FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
                     Foreground="#FFFFFF" 
                     VerticalAlignment="Top" Margin="0,300,0,0" HorizontalAlignment="Center"
                     Cursor="Hand">
                 <Button.Template>
                     <ControlTemplate TargetType="Button">
-                        <Border Name="ButtonBorder" Background="#7C3AED" CornerRadius="22" BorderThickness="0">
+                        <Border Name="ButtonBorder" CornerRadius="16" BorderThickness="0">
                             <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                    <GradientStop Color="#7C3AED" Offset="0"/>
-                                    <GradientStop Color="#06B6D4" Offset="1"/>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#00D4FF" Offset="0"/>
+                                    <GradientStop Color="#5B7CFF" Offset="0.5"/>
+                                    <GradientStop Color="#8A5CFF" Offset="1"/>
                                 </LinearGradientBrush>
                             </Border.Background>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -688,20 +693,20 @@ $xaml = @"
             </Button>
             
             <!-- Update banner - hidden unless an update is actually found -->
-            <Border Name="UpdateBanner" Background="#14171F" CornerRadius="10"
+            <Border Name="UpdateBanner" Background="#121826" CornerRadius="12"
                     VerticalAlignment="Bottom" Margin="16,0,16,44" Padding="10,8"
-                    Visibility="Collapsed" BorderBrush="#06B6D4" BorderThickness="1">
+                    Visibility="Collapsed" BorderBrush="#00D4FF" BorderThickness="1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Name="UpdateBannerText" Grid.Column="0" Text="Update available"
-                               FontFamily="Segoe UI" FontSize="11" Foreground="#F5F5F7"
+                               FontFamily="Segoe UI" FontSize="11" Foreground="#E6E6EB"
                                VerticalAlignment="Center" TextWrapping="Wrap"/>
                     <Button Name="UpdateRestartBtn" Grid.Column="1" Content="Restart to Update"
                             FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
-                            Background="#06B6D4" Foreground="White" BorderThickness="0"
+                            Background="#00D4FF" Foreground="White" BorderThickness="0"
                             Padding="8,4" Cursor="Hand" Margin="8,0,0,0"/>
                 </Grid>
             </Border>
@@ -710,9 +715,9 @@ $xaml = @"
             <Grid Height="30" VerticalAlignment="Bottom" Margin="16,0,16,8">
                 <TextBlock Name="VersionText" Text="v1.3.0" 
                            FontFamily="Segoe UI" FontSize="10" 
-                           Foreground="#6B7280" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                           Foreground="#8A93A6" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                 <Button Name="SettingsBtn" Content="⚙" Width="24" Height="24" 
-                        Background="Transparent" Foreground="#6B7280" 
+                        Background="Transparent" Foreground="#8A93A6" 
                         BorderThickness="0" FontFamily="Segoe UI" FontSize="14"
                         Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center"/>
             </Grid>
@@ -1044,14 +1049,14 @@ if ($savedLicense -and (Verify-ProLicense $savedLicense.LicenseKey)) {
 # Theme definitions
 $script:Themes = @{
     "Cyberpunk" = @{
-        Background = "#0B0D13"
-        TitleBar = "#14171F"
-        AccentStart = "#7C3AED"
-        AccentEnd = "#06B6D4"
-        StatusConnected = "#22D3AA"
-        StatusReconnecting = "#FBBF24"
-        StatusError = "#F43F5E"
-        StatusOffline = "#6B7280"
+        Background = "#0B0F17"
+        TitleBar = "#0B0F17"
+        AccentStart = "#00D4FF"
+        AccentEnd = "#8A5CFF"
+        StatusConnected = "#22E0A6"
+        StatusReconnecting = "#FFC857"
+        StatusError = "#FF5C7A"
+        StatusOffline = "#8A93A6"
     }
     "Sunset" = @{
         Background = "#1A1414"
@@ -1159,7 +1164,7 @@ function Apply-Theme($themeName) {
     if ($actionButton) {
         $newTemplate = @'
 <ControlTemplate TargetType="Button" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
-    <Border Name="ButtonBorder" CornerRadius="22" BorderThickness="0">
+    <Border Name="ButtonBorder" CornerRadius="16" BorderThickness="0">
         <Border.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                 <GradientStop Color="ACCENT_START" Offset="0"/>
@@ -1283,6 +1288,51 @@ $trayIcon.Text = "NexLink v$NexLinkVersion Monitor"
 $trayIcon.Visible = $true
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+
+# ---------- Tray context-menu theme (WinForms flat renderer) ----------
+# ToolStripRenderer can only do flat colors — no gradients, no rounded corners.
+# Matches the Infinity Link palette as closely as WinForms allows.
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+if (-not ([System.Management.Automation.PSTypeName]'NexLink.InfinityLinkColorTable').Type) {
+    Add-Type -ReferencedAssemblies 'System.Windows.Forms','System.Drawing' -TypeDefinition @'
+using System.Drawing;
+using System.Windows.Forms;
+namespace NexLink {
+    public class InfinityLinkColorTable : ProfessionalColorTable {
+        public override Color MenuItemSelected          => ColorTranslator.FromHtml("#1A1F2E");
+        public override Color MenuItemSelectedGradientBegin => ColorTranslator.FromHtml("#1A1F2E");
+        public override Color MenuItemSelectedGradientEnd   => ColorTranslator.FromHtml("#1A1F2E");
+        public override Color MenuItemBorder            => ColorTranslator.FromHtml("#2A3142");
+        public override Color MenuItemPressedGradientBegin => ColorTranslator.FromHtml("#2A3142");
+        public override Color MenuItemPressedGradientEnd   => ColorTranslator.FromHtml("#2A3142");
+        public override Color MenuBorder                => ColorTranslator.FromHtml("#2A3142");
+        public override Color ToolStripDropDownBackground  => ColorTranslator.FromHtml("#121826");
+        public override Color ImageMarginGradientBegin  => ColorTranslator.FromHtml("#121826");
+        public override Color ImageMarginGradientMiddle => ColorTranslator.FromHtml("#121826");
+        public override Color ImageMarginGradientEnd    => ColorTranslator.FromHtml("#121826");
+        public override Color SeparatorDark             => ColorTranslator.FromHtml("#2A3142");
+        public override Color SeparatorLight            => ColorTranslator.FromHtml("#2A3142");
+    }
+    public class InfinityLinkRenderer : ToolStripProfessionalRenderer {
+        public InfinityLinkRenderer() : base(new InfinityLinkColorTable()) {
+            RoundedEdges = false;
+        }
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e) {
+            e.TextColor = e.Item.Enabled
+                ? ColorTranslator.FromHtml("#E6E6EB")
+                : ColorTranslator.FromHtml("#8A93A6");
+            base.OnRenderItemText(e);
+        }
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) {
+            e.Graphics.Clear(ColorTranslator.FromHtml("#121826"));
+        }
+    }
+}
+'@
+}
+$trayMenu.Renderer = New-Object NexLink.InfinityLinkRenderer
+
 $menuShow = $trayMenu.Items.Add("Show Window")
 $menuDisconnect = $trayMenu.Items.Add("Disconnect")
 $trayMenu.Items.Add("-") | Out-Null
@@ -1565,53 +1615,84 @@ $advancedXaml = @"
         Background="Transparent"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen">
-    <Border Background="#14171F" CornerRadius="8" BorderBrush="#1F2937" BorderThickness="1">
+    <Border Background="#0B0F17" CornerRadius="16" BorderBrush="#2A3142" BorderThickness="1">
         <Grid>
-            <!-- Title Bar -->
-            <Grid Height="35" VerticalAlignment="Top" Background="#1F2937">
+            <!-- Title Bar — same background as window, no separate bar color -->
+            <Grid Height="35" VerticalAlignment="Top" Background="#0B0F17">
                 <TextBlock Text="Advanced" FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold" 
-                           Foreground="#F5F5F7" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                           Foreground="#E6E6EB" VerticalAlignment="Center" Margin="12,0,0,0"/>
                 <Button Name="AdvCloseBtn" Content="✕" Width="30" Height="30" 
-                        Background="Transparent" Foreground="#9CA3AF" 
+                        Background="Transparent" Foreground="#8A93A6" 
                         BorderThickness="0" FontFamily="Segoe UI" FontSize="12"
                         Cursor="Hand" HorizontalAlignment="Right" Margin="0,0,8,0"/>
             </Grid>
             
-            <!-- Log Viewer -->
+            <!-- Log Viewer: card background, monospace, muted text -->
             <TextBox Name="LogViewer" 
-                     Background="#0B0D13" Foreground="#22D3AA" 
-                     BorderBrush="#1F2937" BorderThickness="1"
+                     Background="#121826" Foreground="#8A93A6" 
+                     BorderBrush="#2A3142" BorderThickness="1"
                      FontFamily="Consolas" FontSize="10"
                      VerticalAlignment="Top" Margin="12,45,12,0" Height="220"
                      TextWrapping="Wrap" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
             
-            <!-- Buttons -->
+            <!-- Buttons:
+                 Primary actions (Upgrade, Enter License) → brand gradient template
+                 Neutral/secondary (Re-enter, Theme, Open Log)   → flat #1A1F2E
+                 Destructive (Deactivate)                        → #FF5C7A -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" 
                         VerticalAlignment="Bottom" Margin="0,0,0,12">
                 <Button Name="ReenterCredBtn" Content="Re-enter Credentials" Width="140" Height="32"
-                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        Foreground="#E6E6EB" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand">
+                    <Button.Background>
+                        <SolidColorBrush Color="#1A1F2E"/>
+                    </Button.Background>
+                </Button>
                 <Button Name="UpgradeBtn" Content="Upgrade to Pro" Width="120" Height="32"
-                        Background="#10B981" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        Foreground="#FFFFFF" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand">
+                    <Button.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#00D4FF" Offset="0"/>
+                            <GradientStop Color="#5B7CFF" Offset="0.5"/>
+                            <GradientStop Color="#8A5CFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                </Button>
                 <Button Name="EnterLicenseBtn" Content="Enter Pro License" Width="130" Height="32"
-                        Background="#7C3AED" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        Foreground="#FFFFFF" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand">
+                    <Button.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#00D4FF" Offset="0"/>
+                            <GradientStop Color="#5B7CFF" Offset="0.5"/>
+                            <GradientStop Color="#8A5CFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                </Button>
                 <Button Name="DeactivateLicenseBtn" Content="Deactivate License" Width="130" Height="32"
-                        Background="#EF4444" Foreground="#F5F5F7" BorderThickness="0"
+                        Background="#FF5C7A" Foreground="#FFFFFF" BorderThickness="0"
                         FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
                 <Button Name="ThemePickerBtn" Content="Change Theme" Width="110" Height="32"
-                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        Foreground="#E6E6EB" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand">
+                    <Button.Background>
+                        <SolidColorBrush Color="#1A1F2E"/>
+                    </Button.Background>
+                </Button>
                 <Button Name="OpenLogBtn" Content="Open Log File" Width="120" Height="32"
-                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Cursor="Hand"/>
+                        Foreground="#E6E6EB" BorderThickness="0"
+                        FontFamily="Segoe UI" FontSize="11" Cursor="Hand">
+                    <Button.Background>
+                        <SolidColorBrush Color="#1A1F2E"/>
+                    </Button.Background>
+                </Button>
             </StackPanel>
             
             <!-- Version -->
             <TextBlock Name="AdvVersionText" Text="v1.3.0" 
                        FontFamily="Segoe UI" FontSize="9" 
-                       Foreground="#6B7280" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12,0,0,8"/>
+                       Foreground="#8A93A6" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12,0,0,8"/>
         </Grid>
     </Border>
 </Window>
