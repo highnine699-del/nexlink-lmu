@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.13"
+$NexLinkVersion = "1.3.14"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -844,8 +844,8 @@ function Limit-LogFile {
 # with the actual x and y coordinates from ecdsa_public_key.json
 $script:ProPublicKey = @{
     curve = "P-256"
-    x = "yg0VaTuX8pv8kJlfoFIOXFDdgW2vhipwb8sQjb1QlNw="
-    y = "uYyJ9dNVOTu3HiTerRBEojxnGSend6kgMJgeb4W6rG8="
+    x = "wysF6y9aP0lNP193gRQA8udaNffqT4UKjecDw0SyLbk="
+    y = "zpMEBAovSc0ANwby8/vR6nOID6p58omnqFqmDqFUzVM="
 }
 
 $script:ProLicenseFile = Join-Path $ScriptDir "nexlink_pro_license.cred"
