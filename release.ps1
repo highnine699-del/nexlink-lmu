@@ -164,7 +164,10 @@ Write-Host "  NexLink.exe confirmed fresh (built $([math]::Round($secondsOld))s 
 
 # 8. Compute hash
 Write-Host "[6/8] Computing SHA256..." -ForegroundColor Green
-$hash = (Get-FileHash -Path ".\NexLink-Installer.exe" -Algorithm SHA256).Hash
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+$hashBytes = $sha256.ComputeHash([System.IO.File]::ReadAllBytes((Resolve-Path ".\NexLink-Installer.exe")))
+$sha256.Dispose()
+$hash = [System.BitConverter]::ToString($hashBytes) -replace '-', ''
 Write-Host "  Hash: $hash" -ForegroundColor Gray
 
 # 9. Publish the GitHub release with the installer attached, via gh CLI
