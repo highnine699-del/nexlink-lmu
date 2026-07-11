@@ -123,6 +123,12 @@ $htmlContent = Get-Content ".\docs\index.html" -Raw
 $htmlContent = $htmlContent -replace '>v[\d\.]+</span>', ">v$Version</span>"
 Set-Content ".\docs\index.html" -Value $htmlContent -NoNewline
 
+# Bump version in README.txt (bundled in the installer — shown on the Info screen)
+Write-Host "[2c/8] Bumping version in README.txt..." -ForegroundColor Green
+$readmeContent = Get-Content ".\README.txt" -Raw
+$readmeContent = $readmeContent -replace 'NexLink v[\d\.]+', "NexLink v$Version"
+Set-Content ".\README.txt" -Value $readmeContent -NoNewline
+
 # 5. Recompile the exe
 Write-Host "[3/8] Recompiling NexLink.exe..." -ForegroundColor Green
 Remove-Item ".\NexLink.exe" -ErrorAction SilentlyContinue
@@ -200,7 +206,39 @@ git push
 Pop-Location
 
 # 11. Commit the version bump to the main source repo too
-git add NexLink-WPF.ps1 NexLink-installer.iss docs/index.html
+git add NexLink-WPF.ps1 NexLink-installer.iss docs/index.html README.txt
+
+# Auto-append a changelog entry for this release
+$changelogEntry = @"
+
+---
+
+## v$Version release ($(Get-Date -Format 'yyyy-MM-dd'))
+
+- ``NexLink-WPF.ps1`` — ``\$NexLinkVersion`` bumped to ``$Version``
+- ``NexLink-installer.iss`` — ``AppVersion`` bumped to ``$Version.0``
+- ``docs/index.html`` — fallback versions bumped to ``v$Version``
+- ``README.txt`` — version bumped to ``v$Version``
+- SHA256 of installer: ``$hash``
+- Release notes: $Notes
+"@
+
+$changelogPath = Join-Path $ProjectDir "CHANGELOG.md"
+if (Test-Path $changelogPath) {
+    # Insert new entry just before the Pending manual actions section
+    $changelogContent = Get-Content $changelogPath -Raw
+    $insertMarker = "`n---`n`n## Pending manual actions"
+    if ($changelogContent -match [regex]::Escape($insertMarker)) {
+        $changelogContent = $changelogContent -replace [regex]::Escape($insertMarker), "$changelogEntry$insertMarker"
+    } else {
+        # Fallback: just append at the end
+        $changelogContent = $changelogContent.TrimEnd() + $changelogEntry
+    }
+    Set-Content $changelogPath -Value $changelogContent -NoNewline
+    Write-Host "  CHANGELOG.md updated with v$Version entry." -ForegroundColor Gray
+    git add CHANGELOG.md
+}
+
 git commit -m "v$Version release"
 git push
 

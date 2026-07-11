@@ -1738,7 +1738,7 @@ $advancedXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="NexLink Advanced" 
-        Width="500" Height="400"
+        Width="500" Height="460"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -1765,30 +1765,30 @@ $advancedXaml = @"
                      TextWrapping="Wrap" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
             
             <!-- Buttons -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" 
-                        VerticalAlignment="Bottom" Margin="0,0,0,12">
+            <WrapPanel HorizontalAlignment="Center" 
+                        VerticalAlignment="Bottom" Margin="8,0,8,8" Orientation="Horizontal">
                 <Button Name="ReenterCredBtn" Content="Re-enter Credentials" Width="140" Height="32"
                         Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
                 <Button Name="UpgradeBtn" Content="Upgrade to Pro" Width="120" Height="32"
                         Background="#10B981" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
                 <Button Name="EnterLicenseBtn" Content="Enter Pro License" Width="130" Height="32"
                         Background="#7C3AED" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
                 <Button Name="DeactivateLicenseBtn" Content="Deactivate License" Width="130" Height="32"
                         Background="#EF4444" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
                 <Button Name="ThemePickerBtn" Content="Change Theme" Width="110" Height="32"
                         Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
                 <Button Name="OpenLogBtn" Content="Open Log File" Width="120" Height="32"
                         Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="0,0,8,0" Cursor="Hand"/>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
                 <Button Name="SendReportBtn" Content="Send Error Report" Width="140" Height="32"
                         Background="#0EA5E9" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Cursor="Hand"/>
-            </StackPanel>
+                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
+            </WrapPanel>
             
             <!-- Version -->
             <TextBlock Name="AdvVersionText" Text="v1.3.0" 
