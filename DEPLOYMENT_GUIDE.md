@@ -1,6 +1,6 @@
 # NexLink Pro Deployment Guide
 
-**Version**: 1.3.13
+**Version**: 1.3.14
 **Date**: July 2026
 
 ## Status: Deployed
@@ -178,8 +178,8 @@ If Worker fails to import key:
 
 ## Version Information
 
-- **NexLink Version**: 1.3.13
-- **Installer Version**: 1.3.13.0
+- **NexLink Version**: 1.3.14
+- **Installer Version**: 1.3.14.0
 - **License Format**: base64(reference).base64(signature)
 - **Signature Algorithm**: ECDSA P-256 with SHA-256
 - **Key Import**: JWK format (Cloudflare), CNG blob (PowerShell)

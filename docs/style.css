@@ -60,13 +60,11 @@ a:hover {
 /* Navigation, button-style, and utility links — no underline */
 .footer-links a,
 .monitor-source-link,
-.btn-primary,
-.faq-answer a {
+.btn-primary {
   text-decoration: none;
 }
 
-.footer-links a:hover,
-.faq-answer a:hover {
+.footer-links a:hover {
   text-decoration: underline;
 }
 

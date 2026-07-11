@@ -1,4 +1,4 @@
-NexLink v1.3.6
+NexLink v1.3.14
 
 This installer installs the NexLink Wi-Fi monitor application (LMU campus edition).
 

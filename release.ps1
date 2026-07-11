@@ -147,7 +147,6 @@ if (-not (Test-Path ".\NexLink-Installer.exe")) {
 # 7. Verify the version actually took (catches the exact bug we hit before -
 # a stale exe silently not matching the source it was supposedly built from)
 Write-Host "[5/8] Verifying build..." -ForegroundColor Green
-$verifyLog = Join-Path $ProjectDir "lmu_autoconnect.log"
 $exeInfo = Get-Item ".\NexLink.exe"
 $secondsOld = ((Get-Date) - $exeInfo.LastWriteTime).TotalSeconds
 if ($secondsOld -gt 60) {

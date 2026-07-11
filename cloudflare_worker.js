@@ -117,7 +117,7 @@ async function handleRequest(request) {
 </head>
 <body>
   <div class="container">
-    <h1>🎉 Payment Successful!</h1>
+    <h1><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-4px;margin-right:8px"><polyline points="20 6 9 17 4 12"/></svg> Payment Successful!</h1>
     <div class="success">Your NexLink Pro license is ready</div>
     
     <p><strong>Your License Key:</strong></p>
@@ -125,14 +125,14 @@ async function handleRequest(request) {
     <button class="copy-btn" onclick="copyKey()">Copy to Clipboard</button>
     
     <div class="bookmark-hint">
-      <strong>⚠️ Important:</strong> Bookmark or screenshot this page. If you lose your key, you can regenerate it by revisiting this exact URL.
+      <strong><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Important:</strong> Bookmark or screenshot this page. If you lose your key, you can regenerate it by revisiting this exact URL.
     </div>
     
     <div class="instructions">
       <h3>How to activate:</h3>
       <ol>
         <li>Open NexLink</li>
-        <li>Click the ⚙ icon (Advanced)</li>
+        <li>Click the Settings icon (Advanced)</li>
         <li>Click "Enter Pro License"</li>
         <li>Paste your license key</li>
         <li>Click "Validate License"</li>

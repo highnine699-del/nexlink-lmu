@@ -11,6 +11,9 @@ ecdsa_private_key.json
 # Deployment guide contains private key values — never commit
 DEPLOYMENT_GUIDE.md
 
+# Lighthouse reports and other local audit artifacts
+lighthouse.pdf
+
 # Compiled binaries - distributed via GitHub Releases, not tracked in source
 NexLink.exe
 NexLink-Installer.exe
