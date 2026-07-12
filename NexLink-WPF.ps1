@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.21"
+$NexLinkVersion = "1.3.22"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -1836,7 +1836,6 @@ $advancedXaml = @"
         <Style x:Key="StandardActionButton" TargetType="Button">
             <Setter Property="Background" Value="#1F2937"/>
             <Setter Property="Foreground" Value="#F5F5F7"/>
-            <Setter Property="BorderBrush" Value="rgba(255,255,255,0.07)"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontSize" Value="11"/>
@@ -1881,7 +1880,7 @@ $advancedXaml = @"
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="rgba(244, 63, 94, 0.1)"/>
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#1AF43F5E"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="ButtonBorder" Property="RenderTransform">
@@ -1902,7 +1901,6 @@ $advancedXaml = @"
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="#06B6D4"/>
-            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
         </Style>
     </Window.Resources>
     <Border Background="#14171F" CornerRadius="8" BorderBrush="#1F2937" BorderThickness="1">
