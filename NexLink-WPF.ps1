@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.25"
+$NexLinkVersion = "1.3.26"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -262,7 +262,7 @@ function Invoke-SendErrorReport {
     $currentSsid = try { (netsh wlan show interfaces | Select-String "SSID" | Select-Object -First 1).ToString().Split(":")[1].Trim() } catch { "unknown" }
     $uptime = try { (Get-Date) - $script:StartTime } catch { [TimeSpan]::Zero }
     $uptimeStr = if ($uptime.TotalSeconds -gt 0) { "$([math]::Floor($uptime.TotalHours))h $([math]::Floor($uptime.Minutes))m" } else { "unknown" }
-    $crashReason = $script:CrashReason if ($script:CrashReason) else $null
+    $crashReason = if ($script:CrashReason) { $script:CrashReason } else { $null }
 
     # If no diagnostic data exists
     if ($allLines.Count -eq 0 -and $connectionState -eq "unknown" -and $currentSsid -eq "unknown") {
