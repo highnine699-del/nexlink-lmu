@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.19"
+$NexLinkVersion = "1.3.20"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -1785,13 +1785,126 @@ $window.Add_Loaded({
 $advancedXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="NexLink Advanced" 
+        Title="NexLink Advanced"
         Width="500" Height="460"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <!-- Primary Action Button (Upgrade to Pro) -->
+        <Style x:Key="PrimaryActionButton" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#7C3AED" Offset="0"/>
+                        <GradientStop Color="#06B6D4" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="#F5F5F7"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Name="ButtonBorder" Background="{TemplateBinding Background}" CornerRadius="6" BorderThickness="0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98" CenterX="0.5" CenterY="0.5"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Standard Action Button (5 buttons: Enter License, Re-enter Credentials, Change Theme, Open Log, Send Report) -->
+        <Style x:Key="StandardActionButton" TargetType="Button">
+            <Setter Property="Background" Value="#1F2937"/>
+            <Setter Property="Foreground" Value="#F5F5F7"/>
+            <Setter Property="BorderBrush" Value="rgba(255,255,255,0.07)"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Name="ButtonBorder" Background="{TemplateBinding Background}" CornerRadius="6" BorderBrush="#374151" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#374151"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98" CenterX="0.5" CenterY="0.5"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Destructive Action Button (Deactivate License) -->
+        <Style x:Key="DestructiveActionButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#F43F5E"/>
+            <Setter Property="BorderBrush" Value="#F43F5E"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Name="ButtonBorder" Background="{TemplateBinding Background}" CornerRadius="6" BorderBrush="#F43F5E" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="rgba(244, 63, 94, 0.1)"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98" CenterX="0.5" CenterY="0.5"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Section Label Style -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#06B6D4"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+        </Style>
+    </Window.Resources>
     <Border Background="#14171F" CornerRadius="8" BorderBrush="#1F2937" BorderThickness="1">
         <Grid>
             <!-- Title Bar -->
@@ -1805,38 +1918,79 @@ $advancedXaml = @"
             </Grid>
             
             <!-- Log Viewer -->
-            <TextBox Name="LogViewer" 
-                     Background="#0B0D13" Foreground="#22D3AA" 
+            <TextBox Name="LogViewer"
+                     Background="#0B0D13" Foreground="#22D3AA"
                      BorderBrush="#1F2937" BorderThickness="1"
                      FontFamily="Consolas" FontSize="10"
-                     VerticalAlignment="Top" Margin="12,45,12,0" Height="220"
+                     VerticalAlignment="Top" Margin="12,45,12,0" Height="140"
                      TextWrapping="Wrap" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
             
             <!-- Buttons -->
-            <WrapPanel HorizontalAlignment="Center" 
-                        VerticalAlignment="Bottom" Margin="8,0,8,8" Orientation="Horizontal">
-                <Button Name="ReenterCredBtn" Content="Re-enter Credentials" Width="140" Height="32"
-                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-                <Button Name="UpgradeBtn" Content="Upgrade to Pro" Width="120" Height="32"
-                        Background="#10B981" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-                <Button Name="EnterLicenseBtn" Content="Enter Pro License" Width="130" Height="32"
-                        Background="#7C3AED" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-                <Button Name="DeactivateLicenseBtn" Content="Deactivate License" Width="130" Height="32"
-                        Background="#EF4444" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-                <Button Name="ThemePickerBtn" Content="Change Theme" Width="110" Height="32"
-                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-                <Button Name="OpenLogBtn" Content="Open Log File" Width="120" Height="32"
-                        Background="#374151" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-                <Button Name="SendReportBtn" Content="Send Error Report" Width="140" Height="32"
-                        Background="#0EA5E9" Foreground="#F5F5F7" BorderThickness="0"
-                        FontFamily="Segoe UI" FontSize="11" Margin="4,4,4,4" Cursor="Hand"/>
-            </WrapPanel>
+            <StackPanel VerticalAlignment="Bottom" Margin="12,195,12,12">
+                <!-- LICENSE Group -->
+                <TextBlock Text="LICENSE" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                <WrapPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <Button Name="UpgradeBtn" Width="130" Height="32"
+                            Style="{StaticResource PrimaryActionButton}" Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M12 19V5M5 12l7-7 7 7" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Upgrade to Pro"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Name="EnterLicenseBtn" Width="140" Height="32"
+                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Enter Pro License"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Name="DeactivateLicenseBtn" Width="140" Height="32"
+                            Style="{StaticResource DestructiveActionButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M18 6L6 18M6 6l12 12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Deactivate License"/>
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+
+                <!-- SETTINGS Group -->
+                <TextBlock Text="SETTINGS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                <WrapPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <Button Name="ReenterCredBtn" Width="150" Height="32"
+                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Re-enter Credentials"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Name="ThemePickerBtn" Width="120" Height="32"
+                            Style="{StaticResource StandardActionButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M12 2.69l5.74 5.88-5.74 5.88-5.74-5.88L12 2.69zM12 22a5 5 0 0 0 5-5h-10a5 5 0 0 0 5 5z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Change Theme"/>
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+
+                <!-- SUPPORT Group -->
+                <TextBlock Text="SUPPORT" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                <WrapPanel Orientation="Horizontal">
+                    <Button Name="OpenLogBtn" Width="130" Height="32"
+                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Open Log File"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Name="SendReportBtn" Width="150" Height="32"
+                            Style="{StaticResource StandardActionButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
+                            <TextBlock Text="Send Error Report"/>
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+            </StackPanel>
             
             <!-- Version -->
             <TextBlock Name="AdvVersionText" Text="v1.3.0" 
@@ -1868,6 +2022,12 @@ $openLogBtn = $advWindow.FindName("OpenLogBtn")
 $sendReportBtn = $advWindow.FindName("SendReportBtn")
 $advVersionText = $advWindow.FindName("AdvVersionText")
 $advVersionText.Text = "v$NexLinkVersion"
+
+# Advanced window entrance animation
+$advWindow.Add_Loaded({
+    $fadeIn = [System.Windows.Media.Animation.DoubleAnimation]::new(0, 1, [TimeSpan]::FromSeconds(0.25))
+    $advWindow.BeginAnimation([System.Windows.Window]::OpacityProperty, $fadeIn)
+})
 
 # Advanced window dragging
 $advWindow.Add_MouseLeftButtonDown({
