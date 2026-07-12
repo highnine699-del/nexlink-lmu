@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.28"
+$NexLinkVersion = "1.3.29"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -389,7 +389,7 @@ function Invoke-SendErrorReport {
             -Body $payload `
             -ContentType "application/json" `
             -UseBasicParsing `
-            -TimeoutSec 15 `
+            -TimeoutSec 60 `
             -ErrorAction Stop
         Add-Log "Error report sent successfully."
         [System.Windows.Forms.MessageBox]::Show(
