@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.24"
+$NexLinkVersion = "1.3.25"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -236,69 +236,16 @@ function Clear-DnsCache {
     catch {}
 }
 
-# ---------- Developer RSA public key for credential encryption in error reports ----------
-# The matching private key (rsa_private_key.xml) stays on the developer's machine only.
-# Credentials encrypted with this key can only be decrypted by the developer.
-$script:DevRsaPublicKeyXml = '<RSAKeyValue><Modulus>04OVJSzRQ+QIMdKMkh3eUUgS3b/DM5sRhHvMIQk6OKqDxqfSVkeXsE3McTRN2wuCzX1lq8ivhW6B+flr0+IKZyU5K10gajH8thWbpI25cUGYkPZZl4UaFsFncqmk6OxghR3aXDfpBURyXVDAIVQKuCAUOSZszZ3YtnMcQ+2h0dQ/HpX7LfCoTFgSviv1HUKAk+Y1um2I7Y/hUP7rt2nsnuyy+Mq2Yuqq2DyP5elRqOvxkggNzsVbC8+jwX7NCfdCiQMHIDwHqOMl3MOfLBtGRLUKZOccsHUj3f+q6MYIgH89pVoZMqA+N02BmjAbuHeuDu05eGkN76w942cPXSRBIQ==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>'
-
-function Get-EncryptedCredentialsForReport {
-    # Reads lmu_portal.cred, decrypts the DPAPI password to plaintext,
-    # then RSA-encrypts { username, password } using the developer public key.
-    # The result is a base64 string that only the developer can decrypt.
-    try {
-        if (-not (Test-Path $CredFile)) { return $null }
-        $data = Get-Content $CredFile -Raw | ConvertFrom-Json
-        if (-not $data.Username -or -not $data.Password) { return $null }
-
-        # Decrypt DPAPI password to plaintext
-        $securePass = ConvertTo-SecureString $data.Password
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePass)
-        try {
-            $plainPass = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-        }
-        finally {
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-        }
-
-        # Build credential JSON
-        $credJson = [System.Text.Encoding]::UTF8.GetBytes(
-            (@{ username = [string]$data.Username; password = $plainPass } | ConvertTo-Json -Compress)
-        )
-
-        # RSA-encrypt with developer public key (OAEP padding)
-        $rsa = [System.Security.Cryptography.RSA]::Create()
-        $rsa.FromXmlString($script:DevRsaPublicKeyXml)
-        $encrypted = $rsa.Encrypt($credJson, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
-        $rsa.Dispose()
-
-        return [Convert]::ToBase64String($encrypted)
-    }
-    catch {
-        Add-Log "Credential encryption for report failed (non-fatal): $($_.Exception.Message)"
-        return $null
-    }
-}
-
 function Invoke-SendErrorReport {
-    # Collect last 24 hours of log lines
-    $cutoff = (Get-Date).AddHours(-24)
-    $recentLines = @()
+    # Collect diagnostic data: disk logs + memory logs + current status
+    $diskLines = @()
     try {
         if (Test-Path $LogFile) {
-            $recentLines = Get-Content $LogFile -ErrorAction SilentlyContinue |
-                Where-Object {
-                    if ($_ -match '^\[(\d{2}:\d{2}:\d{2})\]') {
-                        # Log lines only have HH:mm:ss — include all lines as
-                        # filtering by time-of-day alone isn't reliable across
-                        # midnight, so include everything in the file and cap at 500 lines.
-                        $true
-                    } else { $true }
-                } | Select-Object -Last 500
+            $diskLines = Get-Content $LogFile -ErrorAction SilentlyContinue | Select-Object -Last 500
         }
     }
     catch {}
 
-    # Also include in-memory lines that may not be flushed yet
     [System.Threading.Monitor]::Enter($script:LogLock)
     try {
         $memLines = $script:logLines | Select-Object -Last 100
@@ -307,11 +254,20 @@ function Invoke-SendErrorReport {
         [System.Threading.Monitor]::Exit($script:LogLock)
     }
 
-    $allLines = @($recentLines) + @($memLines) | Select-Object -Unique | Select-Object -Last 500
+    # Merge and deduplicate, keep newest 500
+    $allLines = @($diskLines) + @($memLines) | Select-Object -Unique | Select-Object -Last 500
 
-    if ($allLines.Count -eq 0) {
+    # Gather current connection status and diagnostics
+    $connectionState = if ($script:ConnectionState) { $script:ConnectionState } else { "unknown" }
+    $currentSsid = try { (netsh wlan show interfaces | Select-String "SSID" | Select-Object -First 1).ToString().Split(":")[1].Trim() } catch { "unknown" }
+    $uptime = try { (Get-Date) - $script:StartTime } catch { [TimeSpan]::Zero }
+    $uptimeStr = if ($uptime.TotalSeconds -gt 0) { "$([math]::Floor($uptime.TotalHours))h $([math]::Floor($uptime.Minutes))m" } else { "unknown" }
+    $crashReason = $script:CrashReason if ($script:CrashReason) else $null
+
+    # If no diagnostic data exists
+    if ($allLines.Count -eq 0 -and $connectionState -eq "unknown" -and $currentSsid -eq "unknown") {
         [System.Windows.Forms.MessageBox]::Show(
-            "No log data found to send.",
+            "No diagnostic information found.",
             "Send Error Report",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
@@ -383,25 +339,46 @@ function Invoke-SendErrorReport {
 
     # Gather system metadata
     $osCaption = try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).Caption } catch { "unknown" }
+    $osBuild = try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).BuildNumber } catch { "unknown" }
+    $psVersion = try { $PSVersionTable.PSVersion.ToString() } catch { "unknown" }
     $adapterInfo = Get-WifiAdapter
-    $adapterDesc = if ($adapterInfo) { "$($adapterInfo.Name) — $($adapterInfo.InterfaceDescription)" } else { "unknown" }
+    $adapterName = if ($adapterInfo) { $adapterInfo.Name } else { "unknown" }
+    $adapterDesc = if ($adapterInfo) { $adapterInfo.InterfaceDescription } else { "unknown" }
+    $driverVersion = if ($adapterInfo) { try { (Get-NetAdapter -Name $adapterInfo.Name -ErrorAction Stop | Get-NetAdapterDriver).DriverVersion } catch { "unknown" } } else { "unknown" }
     $machineHash = try { Get-MachineFingerprint } catch { "" }
     $machinePrefix = if ($machineHash.Length -ge 8) { $machineHash.Substring(0, 8) } else { $machineHash }
+    $timestamp = (Get-Date -Format 'o')
+    $timeZone = try { [System.TimeZoneInfo]::Local.DisplayName } catch { "unknown" }
+    $memoryInfo = try { $cs = Get-CimInstance Win32_ComputerSystem; "$([math]::Round($cs.TotalPhysicalMemory / 1GB, 2)) GB" } catch { "unknown" }
+    $cpuArch = try { [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") } catch { "unknown" }
 
-    # Encrypt credentials with developer RSA public key before transmission.
-    # Only the developer's private key (rsa_private_key.xml) can decrypt this.
-    $encryptedCreds = Get-EncryptedCredentialsForReport
-
+    # Build structured payload
     $payload = @{
-        appVersion            = $NexLinkVersion
-        os                    = $osCaption
-        adapter               = $adapterDesc
-        machineHashPrefix     = $machinePrefix
-        timestamp             = (Get-Date -Format 'o')
-        comment               = $comment
-        logLines              = @($allLines)
-        encryptedCredentials  = $encryptedCreds
-    } | ConvertTo-Json -Compress -Depth 3
+        version = $NexLinkVersion
+        system = @{
+            os = $osCaption
+            osBuild = $osBuild
+            powerShellVersion = $psVersion
+            cpuArchitecture = $cpuArch
+            memory = $memoryInfo
+            timeZone = $timeZone
+        }
+        network = @{
+            adapterName = $adapterName
+            adapterDescription = $adapterDesc
+            driverVersion = $driverVersion
+            currentSsid = $currentSsid
+            connectionState = $connectionState
+        }
+        diagnostics = @{
+            uptime = $uptimeStr
+            crashReason = $crashReason
+            machineId = $machinePrefix
+            timestamp = $timestamp
+        }
+        logs = @($allLines)
+        comment = $comment
+    } | ConvertTo-Json -Compress -Depth 4
 
     try {
         $sendReportBtn.IsEnabled = $false
@@ -423,9 +400,28 @@ function Invoke-SendErrorReport {
         ) | Out-Null
     }
     catch {
-        Add-Log "Failed to send error report: $($_.Exception.Message)"
+        $errorMsg = $_.Exception.Message
+        $respBody = ""
+        if ($_.Exception.Response) {
+            try {
+                $stream = $_.Exception.Response.GetResponseStream()
+                $reader = [System.IO.StreamReader]::new($stream)
+                $respBody = $reader.ReadToEnd()
+                $reader.Close()
+                $stream.Close()
+            } catch {}
+        }
+        Add-Log "Failed to send error report: $errorMsg"
+        if ($respBody) {
+            try {
+                $errorJson = $respBody | ConvertFrom-Json
+                if ($errorJson.error -and $errorJson.body) {
+                    $errorMsg = "$($errorJson.error) - Status: $($errorJson.status)`n`nWeb3Forms response: $($errorJson.body)"
+                }
+            } catch {}
+        }
         [System.Windows.Forms.MessageBox]::Show(
-            "Could not send the report. Check your connection and try again.`n`n$($_.Exception.Message)",
+            "Could not send the report. Check your connection and try again.`n`n$errorMsg",
             "Send Failed",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
