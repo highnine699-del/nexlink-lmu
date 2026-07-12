@@ -1,4 +1,4 @@
-NexLink v1.3.22
+NexLink v1.3.23
 
 This installer installs the NexLink Wi-Fi monitor application (LMU campus edition).
 
