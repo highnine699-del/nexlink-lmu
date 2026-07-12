@@ -90,7 +90,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.20"
+$NexLinkVersion = "1.3.21"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -1930,65 +1930,30 @@ $advancedXaml = @"
                 <!-- LICENSE Group -->
                 <TextBlock Text="LICENSE" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
                 <WrapPanel Orientation="Horizontal" Margin="0,0,0,16">
-                    <Button Name="UpgradeBtn" Width="130" Height="32"
-                            Style="{StaticResource PrimaryActionButton}" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M12 19V5M5 12l7-7 7 7" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Upgrade to Pro"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Name="EnterLicenseBtn" Width="140" Height="32"
-                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Enter Pro License"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Name="DeactivateLicenseBtn" Width="140" Height="32"
-                            Style="{StaticResource DestructiveActionButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M18 6L6 18M6 6l12 12" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Deactivate License"/>
-                        </StackPanel>
-                    </Button>
+                    <Button Name="UpgradeBtn" Content="Upgrade to Pro" Width="130" Height="32"
+                            Style="{StaticResource PrimaryActionButton}" Margin="0,0,6,0"/>
+                    <Button Name="EnterLicenseBtn" Content="Enter Pro License" Width="140" Height="32"
+                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0"/>
+                    <Button Name="DeactivateLicenseBtn" Content="Deactivate License" Width="140" Height="32"
+                            Style="{StaticResource DestructiveActionButton}"/>
                 </WrapPanel>
 
                 <!-- SETTINGS Group -->
                 <TextBlock Text="SETTINGS" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
                 <WrapPanel Orientation="Horizontal" Margin="0,0,0,16">
-                    <Button Name="ReenterCredBtn" Width="150" Height="32"
-                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Re-enter Credentials"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Name="ThemePickerBtn" Width="120" Height="32"
-                            Style="{StaticResource StandardActionButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M12 2.69l5.74 5.88-5.74 5.88-5.74-5.88L12 2.69zM12 22a5 5 0 0 0 5-5h-10a5 5 0 0 0 5 5z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Change Theme"/>
-                        </StackPanel>
-                    </Button>
+                    <Button Name="ReenterCredBtn" Content="Re-enter Credentials" Width="150" Height="32"
+                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0"/>
+                    <Button Name="ThemePickerBtn" Content="Change Theme" Width="120" Height="32"
+                            Style="{StaticResource StandardActionButton}"/>
                 </WrapPanel>
 
                 <!-- SUPPORT Group -->
                 <TextBlock Text="SUPPORT" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
                 <WrapPanel Orientation="Horizontal">
-                    <Button Name="OpenLogBtn" Width="130" Height="32"
-                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Open Log File"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Name="SendReportBtn" Width="150" Height="32"
-                            Style="{StaticResource StandardActionButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" Fill="None" StrokeLineCap="Round" StrokeLineJoin="Round" Width="16" Height="16" Margin="0,0,8,0" Stretch="Uniform"/>
-                            <TextBlock Text="Send Error Report"/>
-                        </StackPanel>
-                    </Button>
+                    <Button Name="OpenLogBtn" Content="Open Log File" Width="130" Height="32"
+                            Style="{StaticResource StandardActionButton}" Margin="0,0,6,0"/>
+                    <Button Name="SendReportBtn" Content="Send Error Report" Width="150" Height="32"
+                            Style="{StaticResource StandardActionButton}"/>
                 </WrapPanel>
             </StackPanel>
             
