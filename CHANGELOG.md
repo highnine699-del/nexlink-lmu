@@ -588,6 +588,16 @@ $sendReportBtn.Add_Click({
 - Release notes: Bug fixes and improvements
 ---
 
+## v1.3.28 release (2026-07-12)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.28`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.28.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.28`
+- `README.txt` — version bumped to `v1.3.28`
+- SHA256 of installer: `9ADC5EDD145C10C8B319CE3A117326D4F1A5BD1FE110920444E86336BA30000D`
+- Release notes: Bug fixes and improvements
+---
+
 ## Pending manual actions (not in code)
 
 1. **Create OG image** — `docs/og-image.png` is currently a 256×256 icon. Replace with 1200×630 image for proper WhatsApp/Telegram link preview cards.
