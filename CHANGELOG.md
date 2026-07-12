@@ -488,6 +488,16 @@ $sendReportBtn.Add_Click({
 - Release notes: fix: Advanced panel buttons wrap to second row, README.txt version auto-bumped on release, CHANGELOG auto-updated on release
 ---
 
+## v1.3.18 release (2026-07-12)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.18`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.18.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.18`
+- `README.txt` — version bumped to `v1.3.18`
+- SHA256 of installer: `A36365E909D9D2D479FF562A4F621EB202E32D5038C1615B191CFBE5D1C841BB`
+- Release notes: Bug fixes and improvements
+---
+
 ## Pending manual actions (not in code)
 
 1. **Create OG image** — `docs/og-image.png` is currently a 256×256 icon. Replace with 1200×630 image for proper WhatsApp/Telegram link preview cards.
