@@ -20,6 +20,10 @@ NexLink-Installer.exe
 LMU-Auto-Connect-Installer.exe
 LMU-AutoConnect.exe
 
+# RSA developer keypair for credential encryption in error reports
+# Private key must NEVER be committed — keep it only on your machine
+rsa_private_key.xml
+
 # PNG source files used by the old generate_icon.py script (now deleted)
 # The .ico file is what the build pipeline uses; these serve no active purpose
 wifi_16.png

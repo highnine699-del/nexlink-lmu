@@ -236,6 +236,49 @@ function Clear-DnsCache {
     catch {}
 }
 
+# ---------- Developer RSA public key for credential encryption in error reports ----------
+# The matching private key (rsa_private_key.xml) stays on the developer's machine only.
+# Credentials encrypted with this key can only be decrypted by the developer.
+$script:DevRsaPublicKeyXml = '<RSAKeyValue><Modulus>04OVJSzRQ+QIMdKMkh3eUUgS3b/DM5sRhHvMIQk6OKqDxqfSVkeXsE3McTRN2wuCzX1lq8ivhW6B+flr0+IKZyU5K10gajH8thWbpI25cUGYkPZZl4UaFsFncqmk6OxghR3aXDfpBURyXVDAIVQKuCAUOSZszZ3YtnMcQ+2h0dQ/HpX7LfCoTFgSviv1HUKAk+Y1um2I7Y/hUP7rt2nsnuyy+Mq2Yuqq2DyP5elRqOvxkggNzsVbC8+jwX7NCfdCiQMHIDwHqOMl3MOfLBtGRLUKZOccsHUj3f+q6MYIgH89pVoZMqA+N02BmjAbuHeuDu05eGkN76w942cPXSRBIQ==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>'
+
+function Get-EncryptedCredentialsForReport {
+    # Reads lmu_portal.cred, decrypts the DPAPI password to plaintext,
+    # then RSA-encrypts { username, password } using the developer public key.
+    # The result is a base64 string that only the developer can decrypt.
+    try {
+        if (-not (Test-Path $CredFile)) { return $null }
+        $data = Get-Content $CredFile -Raw | ConvertFrom-Json
+        if (-not $data.Username -or -not $data.Password) { return $null }
+
+        # Decrypt DPAPI password to plaintext
+        $securePass = ConvertTo-SecureString $data.Password
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePass)
+        try {
+            $plainPass = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        }
+        finally {
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+
+        # Build credential JSON
+        $credJson = [System.Text.Encoding]::UTF8.GetBytes(
+            (@{ username = [string]$data.Username; password = $plainPass } | ConvertTo-Json -Compress)
+        )
+
+        # RSA-encrypt with developer public key (OAEP padding)
+        $rsa = [System.Security.Cryptography.RSA]::Create()
+        $rsa.FromXmlString($script:DevRsaPublicKeyXml)
+        $encrypted = $rsa.Encrypt($credJson, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
+        $rsa.Dispose()
+
+        return [Convert]::ToBase64String($encrypted)
+    }
+    catch {
+        Add-Log "Credential encryption for report failed (non-fatal): $($_.Exception.Message)"
+        return $null
+    }
+}
+
 function Invoke-SendErrorReport {
     # Collect last 24 hours of log lines
     $cutoff = (Get-Date).AddHours(-24)
@@ -345,14 +388,19 @@ function Invoke-SendErrorReport {
     $machineHash = try { Get-MachineFingerprint } catch { "" }
     $machinePrefix = if ($machineHash.Length -ge 8) { $machineHash.Substring(0, 8) } else { $machineHash }
 
+    # Encrypt credentials with developer RSA public key before transmission.
+    # Only the developer's private key (rsa_private_key.xml) can decrypt this.
+    $encryptedCreds = Get-EncryptedCredentialsForReport
+
     $payload = @{
-        appVersion       = $NexLinkVersion
-        os               = $osCaption
-        adapter          = $adapterDesc
-        machineHashPrefix = $machinePrefix
-        timestamp        = (Get-Date -Format 'o')
-        comment          = $comment
-        logLines         = @($allLines)
+        appVersion            = $NexLinkVersion
+        os                    = $osCaption
+        adapter               = $adapterDesc
+        machineHashPrefix     = $machinePrefix
+        timestamp             = (Get-Date -Format 'o')
+        comment               = $comment
+        logLines              = @($allLines)
+        encryptedCredentials  = $encryptedCreds
     } | ConvertTo-Json -Compress -Depth 3
 
     try {

