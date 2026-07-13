@@ -10,6 +10,12 @@
 #   3. If blocked, run once:  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 #   4. Then run:  .\NexLink-WPF.ps1
 
+# ---------- Top-level crash boundary ----------
+# This try/catch wraps the entire script to catch any uncaught exceptions,
+# including startup crashes that prevent the UI from loading. Writes to
+# a local crash log file for diagnosability even when Telegram error
+# reporting is unreachable.
+try {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 # Invoke-WebRequest reports download progress via Write-Progress. In a normal
@@ -17,6 +23,15 @@ $ErrorActionPreference = 'Stop'
 # event renders as an actual modal dialog that blocks the entire WinForms
 # message loop - freezing the whole app. Suppress it entirely.
 $ProgressPreference = 'SilentlyContinue'
+
+# Crash log directory
+$script:CrashLogDir = Join-Path $env:LOCALAPPDATA "NexLink"
+$script:CrashLogFile = Join-Path $script:CrashLogDir "crash.log"
+try {
+    if (-not (Test-Path $script:CrashLogDir)) {
+        New-Item -ItemType Directory -Path $script:CrashLogDir -Force | Out-Null
+    }
+} catch {}
 
 # ---------- Graceful exit signal ----------
 # release.ps1 runs unelevated, but NexLink.exe runs elevated (-requireAdmin),
@@ -90,7 +105,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.29"
+$NexLinkVersion = "1.3.31"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -236,19 +251,80 @@ function Clear-DnsCache {
     catch {}
 }
 
+function Invoke-WebRequestWithRetry {
+    param(
+        [string]$Uri,
+        [string]$Method,
+        [object]$Body,
+        [string]$ContentType,
+        [int]$TimeoutSec,
+        [int]$MaxRetries = 3
+    )
+    
+    $backoffDelays = @(1, 2, 4)
+    $attempt = 0
+    
+    while ($attempt -lt $MaxRetries) {
+        try {
+            $params = @{
+                Uri = $Uri
+                Method = $Method
+                UseBasicParsing = $true
+                TimeoutSec = $TimeoutSec
+                ErrorAction = 'Stop'
+            }
+            if ($Body) { $params.Body = $Body }
+            if ($ContentType) { $params.ContentType = $ContentType }
+            
+            return Invoke-WebRequest @params
+        }
+        catch {
+            $statusCode = $null
+            if ($_.Exception.Response) {
+                try { $statusCode = [int]$_.Exception.Response.StatusCode } catch {}
+            }
+            
+            # Don't retry on 4xx client errors (auth failures, bad requests)
+            if ($statusCode -ge 400 -and $statusCode -lt 500) {
+                throw
+            }
+            
+            # Retry on timeout or 5xx server errors
+            $attempt++
+            if ($attempt -lt $MaxRetries) {
+                $backoff = $backoffDelays[$attempt - 1]
+                Add-Log "[RETRY] Request failed (attempt $attempt/$MaxRetries), retrying in ${backoff}s..."
+                Start-Sleep -Seconds $backoff
+            }
+            else {
+                throw
+            }
+        }
+    }
+}
+
 function Invoke-SendErrorReport {
+    Add-Log "[DEBUG] Invoke-SendErrorReport started"
+
     # Collect diagnostic data: disk logs + memory logs + current status
     $diskLines = @()
     try {
         if (Test-Path $LogFile) {
             $diskLines = Get-Content $LogFile -ErrorAction SilentlyContinue | Select-Object -Last 500
+            Add-Log "[DEBUG] Collected $($diskLines.Count) disk log lines"
+        }
+        else {
+            Add-Log "[DEBUG] Log file not found: $LogFile"
         }
     }
-    catch {}
+    catch {
+        Add-Log "[DEBUG] Error reading disk logs: $($_.Exception.Message)"
+    }
 
     [System.Threading.Monitor]::Enter($script:LogLock)
     try {
         $memLines = $script:logLines | Select-Object -Last 100
+        Add-Log "[DEBUG] Collected $($memLines.Count) memory log lines"
     }
     finally {
         [System.Threading.Monitor]::Exit($script:LogLock)
@@ -256,6 +332,7 @@ function Invoke-SendErrorReport {
 
     # Merge and deduplicate, keep newest 500
     $allLines = @($diskLines) + @($memLines) | Select-Object -Unique | Select-Object -Last 500
+    Add-Log "[DEBUG] Total unique log lines after merge: $($allLines.Count)"
 
     # Gather current connection status and diagnostics
     $connectionState = if (Get-Variable -Name ConnectionState -Scope Script -ErrorAction SilentlyContinue) { $script:ConnectionState } else { "unknown" }
@@ -263,6 +340,8 @@ function Invoke-SendErrorReport {
     $uptime = if (Get-Variable -Name StartTime -Scope Script -ErrorAction SilentlyContinue) { try { (Get-Date) - $script:StartTime } catch { [TimeSpan]::Zero } } else { [TimeSpan]::Zero }
     $uptimeStr = if ($uptime.TotalSeconds -gt 0) { "$([math]::Floor($uptime.TotalHours))h $([math]::Floor($uptime.Minutes))m" } else { "unknown" }
     $crashReason = if (Get-Variable -Name CrashReason -Scope Script -ErrorAction SilentlyContinue) { $script:CrashReason } else { $null }
+
+    Add-Log "[DEBUG] Connection state: $connectionState, SSID: $currentSsid, Uptime: $uptimeStr"
 
     # If no diagnostic data exists
     if ($allLines.Count -eq 0 -and $connectionState -eq "unknown" -and $currentSsid -eq "unknown") {
@@ -380,17 +459,22 @@ function Invoke-SendErrorReport {
         comment = $comment
     } | ConvertTo-Json -Compress -Depth 4
 
+    Add-Log "[DEBUG] Payload size: $($payload.Length) characters"
+    Add-Log "[DEBUG] Sending to: https://nexlink-license.highnine699.workers.dev/report"
+
     try {
         $sendReportBtn.IsEnabled = $false
         $sendReportBtn.Content = "Sending..."
-        $resp = Invoke-WebRequest `
+        Add-Log "[DEBUG] Starting HTTP request..."
+        $resp = Invoke-WebRequestWithRetry `
             -Uri "https://nexlink-license.highnine699.workers.dev/report" `
             -Method Post `
             -Body $payload `
             -ContentType "application/json" `
-            -UseBasicParsing `
             -TimeoutSec 60 `
-            -ErrorAction Stop
+            -MaxRetries 3
+        Add-Log "[DEBUG] HTTP response status: $($resp.StatusCode)"
+        Add-Log "[DEBUG] HTTP response content: $($resp.Content)"
         Add-Log "Error report sent successfully."
         [System.Windows.Forms.MessageBox]::Show(
             "Report sent. Thank you — this helps make NexLink better.",
@@ -401,6 +485,8 @@ function Invoke-SendErrorReport {
     }
     catch {
         $errorMsg = $_.Exception.Message
+        $errorType = $_.Exception.GetType().FullName
+        $errorStackTrace = $_.ScriptStackTrace
         $respBody = ""
         if ($_.Exception.Response) {
             try {
@@ -411,14 +497,20 @@ function Invoke-SendErrorReport {
                 $stream.Close()
             } catch {}
         }
+        Add-Log "[DEBUG] Error type: $errorType"
+        Add-Log "[DEBUG] Error message: $errorMsg"
+        Add-Log "[DEBUG] Error stack trace: $errorStackTrace"
+        Add-Log "[DEBUG] Response body: $respBody"
         Add-Log "Failed to send error report: $errorMsg"
         if ($respBody) {
             try {
                 $errorJson = $respBody | ConvertFrom-Json
                 if ($errorJson.error -and $errorJson.body) {
-                    $errorMsg = "$($errorJson.error) - Status: $($errorJson.status)`n`nWeb3Forms response: $($errorJson.body)"
+                    $errorMsg = "$($errorJson.error) - Status: $($errorJson.status)`n`nResponse: $($errorJson.body)"
                 }
-            } catch {}
+            } catch {
+                Add-Log "[DEBUG] Failed to parse error JSON: $($_.Exception.Message)"
+            }
         }
         [System.Windows.Forms.MessageBox]::Show(
             "Could not send the report. Check your connection and try again.`n`n$errorMsg",
@@ -1077,7 +1169,7 @@ function Invoke-LicenseActivation($licenseKey) {
     $body = @{ licenseKey = $licenseKey; machineHash = $machineHash } | ConvertTo-Json -Compress
 
     try {
-        $resp = Invoke-WebRequest -Uri $activateUrl -Method Post -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        $resp = Invoke-WebRequestWithRetry -Uri $activateUrl -Method Post -Body $body -ContentType "application/json" -TimeoutSec 10 -MaxRetries 3
         $respData = $resp.Content | ConvertFrom-Json
         if (-not $respData.deviceToken) {
             Add-Log "Activation succeeded but server did not return a device token - rejecting."
@@ -2111,3 +2203,26 @@ $window.Add_Closed({
 })
 $window.Show()
 [System.Windows.Threading.Dispatcher]::Run()
+
+} catch {
+    # Top-level crash handler - write to crash log before exiting
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $errorMsg = $_.Exception.Message
+    $errorType = $_.Exception.GetType().FullName
+    $errorStackTrace = $_.ScriptStackTrace
+    $crashEntry = "[$timestamp] CRASH: $errorType - $errorMsg`nStack: $errorStackTrace`n"
+    try {
+        Add-Content -Path $script:CrashLogFile -Value $crashEntry -ErrorAction SilentlyContinue
+    } catch {}
+    # In ps2exe builds, also try to show a message box if possible
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show(
+            "NexLink encountered a fatal error and must close.`n`nError: $errorMsg`n`nA crash log has been saved to:`n$script:CrashLogFile",
+            "NexLink - Fatal Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    } catch {}
+    exit 1
+}
