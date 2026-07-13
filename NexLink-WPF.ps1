@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Odetayo Josiah Inioluwa. All rights reserved.
-# Licensed under the terms in LICENSE.md — see repository
+# Licensed under the terms in LICENSE.md - see repository
 #
 # NexLink-WPF.ps1
 # WPF-based UI overhaul with all backend logic preserved from NexLink-GUI.ps1
@@ -105,7 +105,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.32"
+$NexLinkVersion = "1.3.33"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -479,7 +479,7 @@ function Invoke-SendErrorReport {
         Add-Log "[DEBUG] HTTP response content: $($resp.Content)"
         Add-Log "Error report sent successfully."
         [System.Windows.Forms.MessageBox]::Show(
-            "Report sent. Thank you — this helps make NexLink better.",
+            "Report sent. Thank you - this helps make NexLink better.",
             "Report Sent",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
@@ -944,7 +944,7 @@ $xaml = @"
                 <TextBlock Text="NexLink" FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold" 
                            Foreground="#F5F5F7" VerticalAlignment="Center" Margin="16,0,0,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
-                    <Button Name="MinimizeBtn" Content="─" Width="30" Height="30" 
+                    <Button Name="MinimizeBtn" Content="-" Width="30" Height="30" 
                             Background="Transparent" Foreground="#9CA3AF" 
                             BorderThickness="0" FontFamily="Segoe UI" FontSize="16"
                             Cursor="Hand"/>
@@ -1681,7 +1681,7 @@ function Invoke-ImmediateConnectivityCheck {
     })
 }
 
-# Power mode change event handler — fires an immediate check on wake from sleep.
+# Power mode change event handler - fires an immediate check on wake from sleep.
 $powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.SystemEvents]) -EventName "PowerModeChanged" -Action {
     try {
         if ($EventArgs.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
@@ -1694,10 +1694,10 @@ $powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.S
     }
 }
 
-# Network address change handler — fires an immediate check when the SSID, IP address,
+# Network address change handler - fires an immediate check when the SSID, IP address,
 # or adapter state changes (e.g. roaming between APs while walking between buildings).
 # The debounce prevents the same physical roam event from triggering the check 2-3 times
-# in rapid succession (IP release → IP acquire → adapter settle all fire this event).
+# in rapid succession (IP release -> IP acquire -> adapter settle all fire this event).
 $script:NetworkAddressChangedHandler = {
     try {
         if (((Get-Date) - $script:LastNetworkChangeCheckAt).TotalSeconds -lt $script:NetworkChangeDebounceSec) {
