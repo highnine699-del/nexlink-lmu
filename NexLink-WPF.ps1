@@ -105,7 +105,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.31"
+$NexLinkVersion = "1.3.32"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -149,6 +149,8 @@ $script:PortalRetryAfter = [DateTime]::MinValue
 $script:PortalCooldownShown = $false
 $script:LastReconnectAt = [DateTime]::MinValue
 $script:PortalSession = $null
+$script:PortalSessionCreatedAt = [DateTime]::MinValue
+$script:ReconnectInProgress = $false
 $script:LastLogTrimAt = Get-Date
 $script:LastLoggedStatus = ""
 $script:LastHealthyLogAt = [DateTime]::MinValue
@@ -632,6 +634,7 @@ function Get-CurrentWifiState {
         return [PSCustomObject]@{ SSID = $ssid; Signal = $signal }
     }
     catch {
+        Add-Log "Get-CurrentWifiState failed: $($_.Exception.Message)"
         return [PSCustomObject]@{ SSID = $null; Signal = 0 }
     }
 }
@@ -647,11 +650,11 @@ function Test-TrustedNetwork {
 }
 
 function Get-BestFreeNetwork {
-    param([psobject]$CurrentWifiState = $null)
+    param([psobject]$CurrentWifiState = $null, [array]$VisibleNetworks = $null)
 
     if (-not $CurrentWifiState) { $CurrentWifiState = Get-CurrentWifiState }
-    $visibleNetworks = Get-VisibleWifiNetworks | Where-Object { Test-TrustedNetwork -Ssid $_.SSID }
-    $visibleNetworks = @($visibleNetworks)
+    if (-not $VisibleNetworks) { $VisibleNetworks = Get-VisibleWifiNetworks | Where-Object { Test-TrustedNetwork -Ssid $_.SSID } }
+    $visibleNetworks = @($VisibleNetworks)
     if (-not $visibleNetworks -or $visibleNetworks.Count -eq 0) { return $null }
 
     $currentSsid = if ($CurrentWifiState) { $CurrentWifiState.SSID } else { $null }
@@ -672,11 +675,11 @@ function Get-BestFreeNetwork {
 }
 
 function Get-AllTrustedNetworksByScore {
-    param([psobject]$CurrentWifiState = $null)
+    param([psobject]$CurrentWifiState = $null, [array]$VisibleNetworks = $null)
 
     if (-not $CurrentWifiState) { $CurrentWifiState = Get-CurrentWifiState }
-    $visibleNetworks = Get-VisibleWifiNetworks | Where-Object { Test-TrustedNetwork -Ssid $_.SSID }
-    $visibleNetworks = @($visibleNetworks)
+    if (-not $VisibleNetworks) { $VisibleNetworks = Get-VisibleWifiNetworks | Where-Object { Test-TrustedNetwork -Ssid $_.SSID } }
+    $visibleNetworks = @($VisibleNetworks)
     if (-not $visibleNetworks -or $visibleNetworks.Count -eq 0) { return @() }
 
     $currentSsid = if ($CurrentWifiState) { $CurrentWifiState.SSID } else { $null }
@@ -725,103 +728,125 @@ function Test-WifiSwitchNeeded {
 }
 
 function Restart-WifiConnection {
-    $currentWifiState = Get-CurrentWifiState
-    $targetSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
-    if (-not $targetSsid) { $targetSsid = $script:LastKnownSSID }
-    if (-not $targetSsid) { $targetSsid = $currentWifiState.SSID }
-    Add-Log "Restart-WifiConnection: current='$($currentWifiState.SSID)' ($($currentWifiState.Signal)%), target='$targetSsid'"
-    if ($targetSsid -and -not (Test-WifiSwitchNeeded -TargetSsid $targetSsid -CurrentWifiState $currentWifiState)) {
-        Add-Log "Restart-WifiConnection: switch not needed/allowed right now (cooldown or same network), skipping."
-        return $currentWifiState.SSID
+    if ($script:ReconnectInProgress) {
+        Add-Log "Reconnect already in progress, skipping duplicate call"
+        return $script:LastKnownSSID
     }
 
-    Add-Log "Disconnecting current Wi-Fi connection..."
-    netsh wlan disconnect 2>$null | Out-Null
-    Start-Sleep -Seconds 2
-    
-    $candidates = Get-AllTrustedNetworksByScore -CurrentWifiState $currentWifiState
-    if ($candidates -and $candidates.Count -gt 0) {
-        $connected = $false
-        foreach ($candidate in $candidates) {
-            Add-Log "Attempting to connect to '$($candidate.SSID)' (score $($candidate.Score))..."
-            if (Connect-ToWifiNetwork -Ssid $candidate.SSID) {
-                Add-Log "Connected to '$($candidate.SSID)' successfully. Flushing DNS and resetting portal session."
-                Clear-DnsCache
-                $script:LastKnownSSID = $candidate.SSID
-                $script:LastReconnectAt = Get-Date
-                $script:PortalSession = $null
-                $connected = $true
-                break
-            }
-            Add-Log "Connect attempt to '$($candidate.SSID)' failed, trying next trusted network..."
+    try {
+        $script:ReconnectInProgress = $true
+        $currentWifiState = Get-CurrentWifiState
+        $visibleNetworks = Get-VisibleWifiNetworks | Where-Object { Test-TrustedNetwork -Ssid $_.SSID }
+        $targetSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState -VisibleNetworks $visibleNetworks
+        if (-not $targetSsid) { $targetSsid = $script:LastKnownSSID }
+        if (-not $targetSsid) { $targetSsid = $currentWifiState.SSID }
+        Add-Log "Restart-WifiConnection: current='$($currentWifiState.SSID)' ($($currentWifiState.Signal)%), target='$targetSsid'"
+        if ($targetSsid -and -not (Test-WifiSwitchNeeded -TargetSsid $targetSsid -CurrentWifiState $currentWifiState)) {
+            Add-Log "Restart-WifiConnection: switch not needed/allowed right now (cooldown or same network), skipping."
+            return $currentWifiState.SSID
         }
-        
-        if (-not $connected) {
-            Add-Log "All trusted network connect attempts failed. Attempting DHCP release/renew before power-cycling adapter..."
-            try {
-                ipconfig /release | Out-Null
-                Start-Sleep -Milliseconds 500
-                ipconfig /renew | Out-Null
-                Add-Log "DHCP release/renew completed. Retrying connection to best network..."
-                $bestRetry = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
-                if ($bestRetry -and (Connect-ToWifiNetwork -Ssid $bestRetry)) {
-                    Add-Log "Connected to '$bestRetry' successfully after DHCP renew. Flushing DNS and resetting portal session."
+
+        Add-Log "Disconnecting current Wi-Fi connection..."
+        netsh wlan disconnect 2>$null | Out-Null
+        Start-Sleep -Seconds 2
+
+        $candidates = Get-AllTrustedNetworksByScore -CurrentWifiState $currentWifiState -VisibleNetworks $visibleNetworks
+        if ($candidates -and $candidates.Count -gt 0) {
+            $connected = $false
+            foreach ($candidate in $candidates) {
+                Add-Log "Attempting to connect to '$($candidate.SSID)' (score $($candidate.Score))..."
+                if (Connect-ToWifiNetwork -Ssid $candidate.SSID) {
+                    Add-Log "Connected to '$($candidate.SSID)' successfully. Flushing DNS and resetting portal session."
                     Clear-DnsCache
-                    $script:LastKnownSSID = $bestRetry
+                    $script:LastKnownSSID = $candidate.SSID
                     $script:LastReconnectAt = Get-Date
                     $script:PortalSession = $null
+                    $script:PortalSessionCreatedAt = [DateTime]::MinValue
                     $connected = $true
+                    break
                 }
+                Add-Log "Connect attempt to '$($candidate.SSID)' failed, trying next trusted network..."
             }
-            catch {
-                Add-Log "DHCP release/renew failed: $($_.Exception.Message)"
-            }
-            
+
             if (-not $connected) {
-                Add-Log "DHCP renew did not restore connectivity. Falling back to power-cycling the adapter."
-                $adapter = Get-WifiAdapter
-                if ($adapter) {
-                    Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
-                    Disable-NetAdapter -Name $adapter.Name -Confirm:$false
-                    Start-Sleep -Seconds 2
-                    Enable-NetAdapter -Name $adapter.Name -Confirm:$false
-                    Add-Log "Adapter '$($adapter.Name)' re-enabled."
+                Add-Log "All trusted network connect attempts failed. Attempting DHCP release/renew before power-cycling adapter..."
+                try {
+                    ipconfig /release | Out-Null
+                    Start-Sleep -Milliseconds 500
+                    ipconfig /renew | Out-Null
+                    Add-Log "DHCP release/renew completed. Retrying connection to best network..."
+                    $bestRetry = Get-BestFreeNetwork -CurrentWifiState $currentWifiState -VisibleNetworks $visibleNetworks
+                    if ($bestRetry -and (Connect-ToWifiNetwork -Ssid $bestRetry)) {
+                        Add-Log "Connected to '$bestRetry' successfully after DHCP renew. Flushing DNS and resetting portal session."
+                        Clear-DnsCache
+                        $script:LastKnownSSID = $bestRetry
+                        $script:LastReconnectAt = Get-Date
+                        $script:PortalSession = $null
+                        $script:PortalSessionCreatedAt = [DateTime]::MinValue
+                        $connected = $true
+                    }
                 }
-                else {
-                    Add-Log "No Wi-Fi adapter found to power-cycle."
+                catch {
+                    Add-Log "DHCP release/renew failed: $($_.Exception.Message)"
+                }
+
+                if (-not $connected) {
+                    Add-Log "DHCP renew did not restore connectivity. Falling back to power-cycling the adapter."
+                    $adapter = Get-WifiAdapter
+                    if ($adapter) {
+                        Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
+                        Disable-NetAdapter -Name $adapter.Name -Confirm:$false
+                        Start-Sleep -Seconds 2
+                        Enable-NetAdapter -Name $adapter.Name -Confirm:$false
+                        Add-Log "Adapter '$($adapter.Name)' re-enabled."
+                    }
+                    else {
+                        Add-Log "No Wi-Fi adapter found to power-cycle."
+                    }
                 }
             }
-        }
-    }
-    else {
-        Add-Log "No target SSID available at all (not even a last-known one). Power-cycling adapter as a last resort."
-        $adapter = Get-WifiAdapter
-        if ($adapter) {
-            Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
-            Disable-NetAdapter -Name $adapter.Name -Confirm:$false
-            Start-Sleep -Seconds 2
-            Enable-NetAdapter -Name $adapter.Name -Confirm:$false
-            Add-Log "Adapter '$($adapter.Name)' re-enabled."
         }
         else {
-            Add-Log "No Wi-Fi adapter found to power-cycle."
+            Add-Log "No target SSID available at all (not even a last-known one). Power-cycling adapter as a last resort."
+            $adapter = Get-WifiAdapter
+            if ($adapter) {
+                Add-Log "Power-cycling adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
+                Disable-NetAdapter -Name $adapter.Name -Confirm:$false
+                Start-Sleep -Seconds 2
+                Enable-NetAdapter -Name $adapter.Name -Confirm:$false
+                Add-Log "Adapter '$($adapter.Name)' re-enabled."
+            }
+            else {
+                Add-Log "No Wi-Fi adapter found to power-cycle."
+            }
         }
+        Start-Sleep -Seconds 3
+        # Return the SSID we actually ended up on, not the originally-targeted one.
+        # $script:LastKnownSSID is updated on every successful connect above.
+        return if ($script:LastKnownSSID) { $script:LastKnownSSID } else { $targetSsid }
     }
-    Start-Sleep -Seconds 3
-    # Return the SSID we actually ended up on, not the originally-targeted one.
-    # $script:LastKnownSSID is updated on every successful connect above.
-    return if ($script:LastKnownSSID) { $script:LastKnownSSID } else { $targetSsid }
+    finally {
+        $script:ReconnectInProgress = $false
+    }
 }
 
 function Test-PortalSession {
     foreach ($testPage in $TestPageUrls) {
         try {
             if ($script:PortalSession) {
-                $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                if ($script:PortalSessionCreatedAt -ne [DateTime]::MinValue -and ((Get-Date) - $script:PortalSessionCreatedAt).TotalMinutes -ge 15) {
+                    Add-Log "Portal session is stale (15+ minutes old). Clearing and creating fresh session."
+                    $script:PortalSession = $null
+                    $script:PortalSessionCreatedAt = [DateTime]::MinValue
+                }
+                else {
+                    $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                }
             }
-            else {
+            if (-not $script:PortalSession) {
                 $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
                 $script:PortalSession = $newSession
+                $script:PortalSessionCreatedAt = Get-Date
             }
             $content = $resp.Content.Trim()
             if ($content -eq $testPage.ExpectedText) { return 'Active' }
@@ -847,6 +872,7 @@ function Invoke-PortalLogin {
             if (-not $script:PortalSession) {
                 $resp = Invoke-WebRequest -Uri $url -Method Post -Body $body -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
                 $script:PortalSession = $newSession
+                $script:PortalSessionCreatedAt = Get-Date
             }
             else {
                 $resp = Invoke-WebRequest -Uri $url -Method Post -Body $body -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
