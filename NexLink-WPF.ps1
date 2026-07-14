@@ -105,7 +105,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.33"
+$NexLinkVersion = "1.3.34"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -156,6 +156,8 @@ $script:LastLoggedStatus = ""
 $script:LastHealthyLogAt = [DateTime]::MinValue
 $script:LastUpdateCheckAt = [DateTime]::MinValue
 $script:PendingUpdateManifest = $null
+$script:StartTime = Get-Date
+$script:LastHeartbeatAt = [DateTime]::MinValue
 
 # ---------- Credential handling ----------
 function Save-PortalCredential {
@@ -260,7 +262,11 @@ function Invoke-WebRequestWithRetry {
         [object]$Body,
         [string]$ContentType,
         [int]$TimeoutSec,
-        [int]$MaxRetries = 3
+        [int]$MaxRetries = 3,
+        [object]$WebSession,
+        [string]$SessionVariable,
+        [hashtable]$Headers,
+        [string]$OutFile
     )
     
     $backoffDelays = @(1, 2, 4)
@@ -277,6 +283,10 @@ function Invoke-WebRequestWithRetry {
             }
             if ($Body) { $params.Body = $Body }
             if ($ContentType) { $params.ContentType = $ContentType }
+            if ($WebSession) { $params.WebSession = $WebSession }
+            if ($SessionVariable) { $params.SessionVariable = $SessionVariable }
+            if ($Headers) { $params.Headers = $Headers }
+            if ($OutFile) { $params.OutFile = $OutFile }
             
             return Invoke-WebRequest @params
         }
@@ -534,7 +544,7 @@ function Test-ForUpdate {
     # manifest object when a genuinely newer version is confirmed.
     if (-not $UpdateCheckEnabled) { return $null }
     try {
-        $resp = Invoke-WebRequest -Uri $UpdateManifestUrl -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
+        $resp = Invoke-WebRequestWithRetry -Uri $UpdateManifestUrl -Method Get -TimeoutSec 8 -MaxRetries 3
         $rawContent = $resp.Content.TrimStart([char]0xFEFF, [char]0x200B).Trim()
         $manifest = $rawContent | ConvertFrom-Json -ErrorAction Stop
         if (-not $manifest.version -or -not $manifest.installer_url -or -not $manifest.sha256) {
@@ -562,7 +572,7 @@ function Start-NexLinkUpdate($manifest) {
     $tempInstaller = Join-Path $env:TEMP "NexLink-Update-$($manifest.version).exe"
     try {
         Add-Log "Downloading update v$($manifest.version)..."
-        Invoke-WebRequest -Uri $manifest.installer_url -OutFile $tempInstaller -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+        Invoke-WebRequestWithRetry -Uri $manifest.installer_url -Method Get -TimeoutSec 60 -MaxRetries 3 -OutFile $tempInstaller
     }
     catch {
         Add-Log "Update download FAILED (app unaffected, still running normally): $($_.Exception.Message)"
@@ -840,11 +850,11 @@ function Test-PortalSession {
                     $script:PortalSessionCreatedAt = [DateTime]::MinValue
                 }
                 else {
-                    $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                    $resp = Invoke-WebRequestWithRetry -Uri $testPage.Url -Method Get -TimeoutSec 6 -MaxRetries 3 -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
                 }
             }
             if (-not $script:PortalSession) {
-                $resp = Invoke-WebRequest -Uri $testPage.Url -UseBasicParsing -TimeoutSec 6 -ErrorAction Stop -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                $resp = Invoke-WebRequestWithRetry -Uri $testPage.Url -Method Get -TimeoutSec 6 -MaxRetries 3 -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
                 $script:PortalSession = $newSession
                 $script:PortalSessionCreatedAt = Get-Date
             }
@@ -870,12 +880,12 @@ function Invoke-PortalLogin {
     foreach ($url in $loginUrls) {
         try {
             if (-not $script:PortalSession) {
-                $resp = Invoke-WebRequest -Uri $url -Method Post -Body $body -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                $resp = Invoke-WebRequestWithRetry -Uri $url -Method Post -Body $body -TimeoutSec 10 -MaxRetries 3 -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
                 $script:PortalSession = $newSession
                 $script:PortalSessionCreatedAt = Get-Date
             }
             else {
-                $resp = Invoke-WebRequest -Uri $url -Method Post -Body $body -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
+                $resp = Invoke-WebRequestWithRetry -Uri $url -Method Post -Body $body -TimeoutSec 10 -MaxRetries 3 -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
             }
             $content = $resp.Content
             if ($resp.BaseResponse.ResponseUri -match '/login' -or $content -match "Landmark University Hotspot Login" -or $content -match 'action="https://internet\.lmu\.edu\.ng/login"') {
@@ -902,7 +912,7 @@ function Invoke-PortalLogout {
     $logoutUrls = @($LogoutUrl, ($LogoutUrl -replace '^https://', 'http://'))
     foreach ($url in $logoutUrls) {
         try {
-            Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' } | Out-Null
+            Invoke-WebRequestWithRetry -Uri $url -Method Get -TimeoutSec 8 -MaxRetries 3 -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' } | Out-Null
             $script:PortalSession = $null
             return $true
         }
@@ -1098,16 +1108,30 @@ $window.Add_MouseMove({
 # background-app convention (Discord, Spotify, etc). Real exit only via the
 # tray icon's right-click "Exit" menu item below.
 $closeBtn.Add_Click({
-    $window.WindowState = [System.Windows.WindowState]::Minimized
-    $window.Hide()
-    $trayIcon.ShowBalloonTip(2500, "NexLink", "Still running - look for this icon in your system tray (click the ^ arrow if you don't see it).", [System.Windows.Forms.ToolTipIcon]::Info)
+    try {
+        $window.WindowState = [System.Windows.WindowState]::Minimized
+        $window.Hide()
+        $trayIcon.ShowBalloonTip(2500, "NexLink", "Still running - look for this icon in your system tray (click the ^ arrow if you don't see it).", [System.Windows.Forms.ToolTipIcon]::Info)
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] closeBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Minimize button
 $minimizeBtn.Add_Click({
-    $window.WindowState = [System.Windows.WindowState]::Minimized
-    $window.Hide()
-    $trayIcon.ShowBalloonTip(2500, "NexLink", "Still running - look for this icon in your system tray (click the ^ arrow if you don't see it).", [System.Windows.Forms.ToolTipIcon]::Info)
+    try {
+        $window.WindowState = [System.Windows.WindowState]::Minimized
+        $window.Hide()
+        $trayIcon.ShowBalloonTip(2500, "NexLink", "Still running - look for this icon in your system tray (click the ^ arrow if you don't see it).", [System.Windows.Forms.ToolTipIcon]::Info)
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] minimizeBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # ---------- Logging Functions ----------
@@ -1595,11 +1619,18 @@ function Reconnect-Manually {
 }
 
 $actionButton.Add_Click({
-    if ($script:ManuallyDisconnected) {
-        Reconnect-Manually
+    try {
+        if ($script:ManuallyDisconnected) {
+            Reconnect-Manually
+        }
+        else {
+            Disconnect-Manually
+        }
     }
-    else {
-        Disconnect-Manually
+    catch {
+        $errorMsg = "[HANDLER-CRASH] actionButton.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
@@ -1624,31 +1655,60 @@ $trayIcon.ContextMenuStrip = $trayMenu
 $script:allowExit = $false
 
 $menuShow.Add_Click({ 
-    $window.Show(); 
-    $window.WindowState = "Normal"; 
-    $window.Activate() 
+    try {
+        $window.Show(); 
+        $window.WindowState = "Normal"; 
+        $window.Activate() 
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] menuShow.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 $trayIcon.Add_DoubleClick({ 
-    $window.Show(); 
-    $window.WindowState = "Normal"; 
-    $window.Activate() 
+    try {
+        $window.Show(); 
+        $window.WindowState = "Normal"; 
+        $window.Activate() 
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] trayIcon.Add_DoubleClick: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 $trayMenu.Add_Opening({
-    $menuDisconnect.Text = if ($script:ManuallyDisconnected) { "Reconnect" } else { "Disconnect" }
+    try {
+        $menuDisconnect.Text = if ($script:ManuallyDisconnected) { "Reconnect" } else { "Disconnect" }
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] trayMenu.Add_Opening: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 $menuDisconnect.Add_Click({
-    if ($script:ManuallyDisconnected) {
-        Reconnect-Manually
+    try {
+        if ($script:ManuallyDisconnected) {
+            Reconnect-Manually
+        }
+        else {
+            Disconnect-Manually
+        }
     }
-    else {
-        Disconnect-Manually
+    catch {
+        $errorMsg = "[HANDLER-CRASH] menuDisconnect.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
 function Invoke-GracefulExit {
     $script:allowExit = $true
+    Add-Log "===== Session ending (tray exit) ====="
     $timer.Stop()
     $trayIcon.Visible = $false
     try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
@@ -1659,7 +1719,16 @@ function Invoke-GracefulExit {
     [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
 }
 
-$menuExit.Add_Click({ Invoke-GracefulExit })
+$menuExit.Add_Click({
+    try {
+        Invoke-GracefulExit
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] menuExit.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
+})
 
 # ---------- Timer-driven check loop ----------
 $timer = New-Object System.Windows.Threading.DispatcherTimer
@@ -1690,7 +1759,9 @@ $powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.S
         }
     }
     catch {
-        try { Add-Log "PowerModeChanged handler error: $($_.Exception.Message)" } catch { Write-Host "[NexLink] PowerModeChanged handler error: $($_.Exception.Message)" }
+        $errorMsg = "[HANDLER-CRASH] PowerModeChanged: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 }
 
@@ -1708,7 +1779,9 @@ $script:NetworkAddressChangedHandler = {
         Invoke-ImmediateConnectivityCheck
     }
     catch {
-        try { Add-Log "NetworkAddressChanged handler error: $($_.Exception.Message)" } catch { Write-Host "[NexLink] NetworkAddressChanged handler error: $($_.Exception.Message)" }
+        $errorMsg = "[HANDLER-CRASH] NetworkAddressChanged: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 }
 [System.Net.NetworkInformation.NetworkChange]::add_NetworkAddressChanged($script:NetworkAddressChangedHandler)
@@ -1731,6 +1804,13 @@ $timer.Add_Tick({
             $updateBannerText.Text = "v$($foundUpdate.version) is available"
             $updateBanner.Visibility = [System.Windows.Visibility]::Visible
         }
+    }
+    # Heartbeat: log every 5 minutes to bound crash time if app dies silently
+    if ($script:LastHeartbeatAt -eq [DateTime]::MinValue -or ((Get-Date) - $script:LastHeartbeatAt).TotalMinutes -ge 5) {
+        $uptime = (Get-Date) - $script:StartTime
+        $uptimeStr = "$([math]::Floor($uptime.TotalHours))h $([math]::Floor($uptime.Minutes))m"
+        Add-Log "[HEARTBEAT] Still running, uptime=$uptimeStr"
+        $script:LastHeartbeatAt = Get-Date
     }
     try {
         $currentWifiState = Get-CurrentWifiState
@@ -1847,7 +1927,9 @@ $timer.Add_Tick({
         $timer.Interval = [TimeSpan]::FromMilliseconds($CheckIntervalMs)
     }
     catch {
-        Add-Log "ERROR in monitor tick: $($_.Exception.Message)"
+        $errorMsg = "[HANDLER-CRASH] timer.Add_Tick: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
         Set-Status "Error - see log" "Error"
         # Reset fail counters so the next tick starts fresh rather than
         # immediately triggering another reconnect on a potentially stale state.
@@ -1862,38 +1944,46 @@ $timer.Add_Tick({
 
 # ---------- Window Entrance Animation ----------
 $window.Add_Loaded({
-    # Fade-in animation
-    $fadeIn = [System.Windows.Media.Animation.DoubleAnimation]::new(0, 1, [TimeSpan]::FromSeconds(0.25))
-    $window.BeginAnimation([System.Windows.Window]::OpacityProperty, $fadeIn)
+    try {
+        # Fade-in animation
+        $fadeIn = [System.Windows.Media.Animation.DoubleAnimation]::new(0, 1, [TimeSpan]::FromSeconds(0.25))
+        $window.BeginAnimation([System.Windows.Window]::OpacityProperty, $fadeIn)
 
-    Limit-LogFile
-    $osInfo = try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).Caption } catch { "unknown OS" }
-    $adapterInfo = Get-WifiAdapter
-    $adapterDesc = if ($adapterInfo) { "$($adapterInfo.Name) - $($adapterInfo.InterfaceDescription)" } else { "NOT FOUND" }
-    Add-Log "===== Monitor started. Checking every $($CheckIntervalMs / 1000)s. ====="
-    Add-Log "Version=$NexLinkVersion OS='$osInfo' Adapter='$adapterDesc'"
-    Get-PortalCredential | Out-Null
-    Update-KnownSSID | Out-Null
-    $currentWifiState = Get-CurrentWifiState
-    Add-Log "Startup Wi-Fi state: SSID='$($currentWifiState.SSID)' Signal=$($currentWifiState.Signal)%"
-    $bestSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
-    $currentSsid = $currentWifiState.SSID
-    if ($bestSsid -and $currentSsid -and $currentSsid -ne $bestSsid) {
-        Add-Log "Starting on '$currentSsid'; switching to preferred network '$bestSsid'"
-        Restart-WifiConnection | Out-Null
+        Limit-LogFile
+        $osInfo = try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).Caption } catch { "unknown OS" }
+        $adapterInfo = Get-WifiAdapter
+        $adapterDesc = if ($adapterInfo) { "$($adapterInfo.Name) - $($adapterInfo.InterfaceDescription)" } else { "NOT FOUND" }
+        Add-Log "===== Session starting (NexLink v$NexLinkVersion) ====="
+        Add-Log "===== Monitor started. Checking every $($CheckIntervalMs / 1000)s. ====="
+        Add-Log "Version=$NexLinkVersion OS='$osInfo' Adapter='$adapterDesc'"
+        Get-PortalCredential | Out-Null
+        Update-KnownSSID | Out-Null
+        $currentWifiState = Get-CurrentWifiState
+        Add-Log "Startup Wi-Fi state: SSID='$($currentWifiState.SSID)' Signal=$($currentWifiState.Signal)%"
+        $bestSsid = Get-BestFreeNetwork -CurrentWifiState $currentWifiState
+        $currentSsid = $currentWifiState.SSID
+        if ($bestSsid -and $currentSsid -and $currentSsid -ne $bestSsid) {
+            Add-Log "Starting on '$currentSsid'; switching to preferred network '$bestSsid'"
+            Restart-WifiConnection | Out-Null
+        }
+        $trayIcon.ShowBalloonTip(4000, "NexLink is running", "Look for this icon in your system tray. If you don't see it, click the small ^ arrow next to your other tray icons.", [System.Windows.Forms.ToolTipIcon]::Info)
+        $timer.Start()
+
+        # Update check runs last, after the core monitor is already active.
+        # A slow or failed network check here can never delay or block the
+        # app's actual job of keeping you connected.
+        $script:LastUpdateCheckAt = Get-Date
+        $foundUpdate = Test-ForUpdate
+        if ($foundUpdate) {
+            $script:PendingUpdateManifest = $foundUpdate
+            $updateBannerText.Text = "v$($foundUpdate.version) is available"
+            $updateBanner.Visibility = [System.Windows.Visibility]::Visible
+        }
     }
-    $trayIcon.ShowBalloonTip(4000, "NexLink is running", "Look for this icon in your system tray. If you don't see it, click the small ^ arrow next to your other tray icons.", [System.Windows.Forms.ToolTipIcon]::Info)
-    $timer.Start()
-
-    # Update check runs last, after the core monitor is already active.
-    # A slow or failed network check here can never delay or block the
-    # app's actual job of keeping you connected.
-    $script:LastUpdateCheckAt = Get-Date
-    $foundUpdate = Test-ForUpdate
-    if ($foundUpdate) {
-        $script:PendingUpdateManifest = $foundUpdate
-        $updateBannerText.Text = "v$($foundUpdate.version) is available"
-        $updateBanner.Visibility = [System.Windows.Visibility]::Visible
+    catch {
+        $errorMsg = "[HANDLER-CRASH] window.Add_Loaded: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
@@ -2105,126 +2195,218 @@ $advVersionText.Text = "v$NexLinkVersion"
 
 # Advanced window entrance animation
 $advWindow.Add_Loaded({
-    $fadeIn = [System.Windows.Media.Animation.DoubleAnimation]::new(0, 1, [TimeSpan]::FromSeconds(0.25))
-    $advWindow.BeginAnimation([System.Windows.Window]::OpacityProperty, $fadeIn)
+    try {
+        $fadeIn = [System.Windows.Media.Animation.DoubleAnimation]::new(0, 1, [TimeSpan]::FromSeconds(0.25))
+        $advWindow.BeginAnimation([System.Windows.Window]::OpacityProperty, $fadeIn)
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] advWindow.Add_Loaded: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Advanced window dragging
 $advWindow.Add_MouseLeftButtonDown({
-    $this.DragMove()
+    try {
+        $this.DragMove()
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] advWindow.Add_MouseLeftButtonDown: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Close advanced panel
 $advCloseBtn.Add_Click({
-    $advWindow.Hide()
+    try {
+        $advWindow.Hide()
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] advCloseBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Re-enter credentials
 $reenterCredBtn.Add_Click({
-    if (Save-PortalCredential) {
-        $script:PortalSession = $null
-        Add-Log "Credentials re-entered by user."
-        [System.Windows.Forms.MessageBox]::Show("Credentials updated successfully.", "NexLink") | Out-Null
+    try {
+        if (Save-PortalCredential) {
+            $script:PortalSession = $null
+            Add-Log "Credentials re-entered by user."
+            [System.Windows.Forms.MessageBox]::Show("Credentials updated successfully.", "NexLink") | Out-Null
+        }
+        else {
+            Add-Log "Credential re-entry cancelled by user - existing credentials unchanged, app continues running."
+        }
     }
-    else {
-        Add-Log "Credential re-entry cancelled by user - existing credentials unchanged, app continues running."
+    catch {
+        $errorMsg = "[HANDLER-CRASH] reenterCredBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
 # Upgrade to Pro
 $upgradeBtn.Add_Click({
-    $paymentUrl = "https://paystack.shop/pay/nexlink-license"
-    [System.Windows.Forms.MessageBox]::Show("This will open the Paystack payment page in your browser. Complete the payment to receive your Pro license key.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-    Start-Process $paymentUrl
+    try {
+        $paymentUrl = "https://paystack.shop/pay/nexlink-license"
+        [System.Windows.Forms.MessageBox]::Show("This will open the Paystack payment page in your browser. Complete the payment to receive your Pro license key.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        Start-Process $paymentUrl
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] upgradeBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Enter Pro License
 $enterLicenseBtn.Add_Click({
-    Show-LicenseInputDialog
+    try {
+        Show-LicenseInputDialog
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] enterLicenseBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Theme picker (Pro feature)
 $themePickerBtn.Add_Click({
-    if (-not $script:IsProLicensed) {
-        [System.Windows.Forms.MessageBox]::Show("Theme customization is a Pro feature. Please activate your license first.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-        return
+    try {
+        if (-not $script:IsProLicensed) {
+            [System.Windows.Forms.MessageBox]::Show("Theme customization is a Pro feature. Please activate your license first.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+            return
+        }
+        Show-ThemePickerDialog
     }
-    Show-ThemePickerDialog
+    catch {
+        $errorMsg = "[HANDLER-CRASH] themePickerBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Deactivate License
 $deactivateLicenseBtn.Add_Click({
-    if (-not $script:IsProLicensed) {
-        [System.Windows.Forms.MessageBox]::Show("No active Pro license to deactivate.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-        return
+    try {
+        if (-not $script:IsProLicensed) {
+            [System.Windows.Forms.MessageBox]::Show("No active Pro license to deactivate.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+            return
+        }
+        
+        $result = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to deactivate your Pro license? This will remove all Pro features.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        
+        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+            try {
+                Remove-Item $script:ProLicenseFile -ErrorAction Stop
+                $script:IsProLicensed = $false
+                Add-Log "Pro license deactivated by user."
+                [System.Windows.Forms.MessageBox]::Show("Pro license deactivated successfully.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+            }
+            catch {
+                Add-Log "Failed to deactivate Pro license: $($_.Exception.Message)"
+                [System.Windows.Forms.MessageBox]::Show("Failed to deactivate license. Please check logs for details.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+            }
+        }
     }
-    
-    $result = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to deactivate your Pro license? This will remove all Pro features.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
-    
-    if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-        try {
-            Remove-Item $script:ProLicenseFile -ErrorAction Stop
-            $script:IsProLicensed = $false
-            Add-Log "Pro license deactivated by user."
-            [System.Windows.Forms.MessageBox]::Show("Pro license deactivated successfully.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
-        }
-        catch {
-            Add-Log "Failed to deactivate Pro license: $($_.Exception.Message)"
-            [System.Windows.Forms.MessageBox]::Show("Failed to deactivate license. Please check logs for details.", "NexLink Pro", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
-        }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] deactivateLicenseBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
 # Open log file
 $openLogBtn.Add_Click({
-    if (Test-Path $LogFile) {
-        [NexLink.Win32ForegroundHelper]::AllowSetForegroundWindow(-1) | Out-Null
-        Start-Process notepad.exe $LogFile
+    try {
+        if (Test-Path $LogFile) {
+            [NexLink.Win32ForegroundHelper]::AllowSetForegroundWindow(-1) | Out-Null
+            Start-Process notepad.exe $LogFile
+        }
+        else {
+            [System.Windows.Forms.MessageBox]::Show("Log file not found.", "NexLink") | Out-Null
+        }
     }
-    else {
-        [System.Windows.Forms.MessageBox]::Show("Log file not found.", "NexLink") | Out-Null
+    catch {
+        $errorMsg = "[HANDLER-CRASH] openLogBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
 # Send error report
 $sendReportBtn.Add_Click({
-    Invoke-SendErrorReport
+    try {
+        Invoke-SendErrorReport
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] sendReportBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # Update log viewer when advanced panel opens
 $updateRestartBtn.Add_Click({
-    if ($script:PendingUpdateManifest) {
-        $updateRestartBtn.IsEnabled = $false
-        $updateRestartBtn.Content = "Updating..."
-        Start-NexLinkUpdate $script:PendingUpdateManifest
-        # If we reach this line, the update did NOT proceed (download or
-        # verification failed) - Start-NexLinkUpdate already logged why and
-        # showed the user a message. Re-enable the button so they can retry.
-        $updateRestartBtn.IsEnabled = $true
-        $updateRestartBtn.Content = "Restart to Update"
+    try {
+        if ($script:PendingUpdateManifest) {
+            $updateRestartBtn.IsEnabled = $false
+            $updateRestartBtn.Content = "Updating..."
+            Start-NexLinkUpdate $script:PendingUpdateManifest
+            # If we reach this line, the update did NOT proceed (download or
+            # verification failed) - Start-NexLinkUpdate already logged why and
+            # showed the user a message. Re-enable the button so they can retry.
+            $updateRestartBtn.IsEnabled = $true
+            $updateRestartBtn.Content = "Restart to Update"
+        }
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] updateRestartBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 
 $settingsBtn.Add_Click({
-    $advLogViewer.Text = $script:logLines -join "`r`n"
-    $advLogViewer.ScrollToEnd()
-    $advWindow.Show() | Out-Null
+    try {
+        $advLogViewer.Text = $script:logLines -join "`r`n"
+        $advLogViewer.ScrollToEnd()
+        $advWindow.Show() | Out-Null
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] settingsBtn.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
 })
 
 # ---------- Show Window ----------
 $window.Add_Closed({
-    # Safety net: if the window closes through any path we haven't
-    # explicitly handled (Alt+F4, system menu, etc.), still clean up
-    # properly instead of leaving a zombie process or orphaned tray icon.
-    # Guard with $script:allowExit so Invoke-GracefulExit (which calls
-    # $window.Close() itself) doesn't double-fire InvokeShutdown.
-    if (-not $script:allowExit) {
-        $timer.Stop()
-        $trayIcon.Visible = $false
-        try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
-        try { [System.Net.NetworkInformation.NetworkChange]::remove_NetworkAddressChanged($script:NetworkAddressChangedHandler) } catch {}
-        try { $script:InstanceMutex.ReleaseMutex() } catch {}
-        [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+    try {
+        # Safety net: if the window closes through any path we haven't
+        # explicitly handled (Alt+F4, system menu, etc.), still clean up
+        # properly instead of leaving a zombie process or orphaned tray icon.
+        # Guard with $script:allowExit so Invoke-GracefulExit (which calls
+        # $window.Close() itself) doesn't double-fire InvokeShutdown.
+        if (-not $script:allowExit) {
+            Add-Log "===== Session ending (window close) ====="
+            $timer.Stop()
+            $trayIcon.Visible = $false
+            try { Unregister-Event -SourceIdentifier $powerModeChangedHandler.Name -ErrorAction SilentlyContinue } catch {}
+            try { [System.Net.NetworkInformation.NetworkChange]::remove_NetworkAddressChanged($script:NetworkAddressChangedHandler) } catch {}
+            try { $script:InstanceMutex.ReleaseMutex() } catch {}
+            [System.Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+        }
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] window.Add_Closed: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
 })
 $window.Show()
