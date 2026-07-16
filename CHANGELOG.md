@@ -717,3 +717,13 @@ $sendReportBtn.Add_Click({
 - `README.txt` — version bumped to `v1.3.42`
 - SHA256 of installer: `CF58429B5A60F9F81ED93EFA873E1C4F6667D6655B2E3ECC6408327A1E6D5722`
 - Release notes: Fix silent-close bug: replace exit calls in Get-PortalCredential with graceful return, since exit bypasses all try/catch and was killing the app on any credential file issue
+---
+
+## v1.3.43 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\1.3.42` bumped to `1.3.43`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.43.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.43`
+- `README.txt` — version bumped to `v1.3.43`
+- SHA256 of installer: `EB2DBB4DF722C156662199679144F373DB3563E5B9D99801E314D6437D5C4226`
+- Release notes: Bug fixes and improvements
