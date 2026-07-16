@@ -105,7 +105,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.34"
+$NexLinkVersion = "1.3.35"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -344,6 +344,12 @@ function Invoke-SendErrorReport {
 
     # Merge and deduplicate, keep newest 500
     $allLines = @($diskLines) + @($memLines) | Select-Object -Unique | Select-Object -Last 500
+
+    # Redact the portal username before this ever leaves the machine.
+    $allLines = $allLines | ForEach-Object {
+        $_ -replace "user '[^']*'", "user '[redacted]'" `
+           -replace "for user: [^\s]+", "for user: [redacted]"
+    }
     Add-Log "[DEBUG] Total unique log lines after merge: $($allLines.Count)"
 
     # Gather current connection status and diagnostics
@@ -393,7 +399,7 @@ function Invoke-SendErrorReport {
     $txt.BorderStyle = "FixedSingle"
 
     $infoLbl = New-Object System.Windows.Forms.Label
-    $infoLbl.Text = "The last 24hrs of connection logs will be included. No passwords are sent."
+    $infoLbl.Text = "The last 24hrs of connection logs will be included. Your password and username are redacted before sending."
     $infoLbl.Location = New-Object System.Drawing.Point(16, 132)
     $infoLbl.Size = New-Object System.Drawing.Size(380, 32)
     $infoLbl.ForeColor = [System.Drawing.ColorTranslator]::FromHtml("#9CA3AF")

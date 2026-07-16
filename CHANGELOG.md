@@ -648,6 +648,16 @@ $sendReportBtn.Add_Click({
 - Release notes: Retry logic on core portal calls, deprecated recompile_wpf.ps1 in favor of release.ps1
 ---
 
+## v1.3.35 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.35`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.35.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.35`
+- `README.txt` — version bumped to `v1.3.35`
+- SHA256 of installer: `68CA6FB1ACF6DAF03DD494838CE3ECDA8AA07BB506BBD716C02F49C8392511AE`
+- Release notes: Redact portal username from error report logs
+---
+
 ## Pending manual actions (not in code)
 
 1. **Create OG image** — `docs/og-image.png` is currently a 256×256 icon. Replace with 1200×630 image for proper WhatsApp/Telegram link preview cards.
