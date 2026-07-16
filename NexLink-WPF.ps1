@@ -33,6 +33,30 @@ try {
     }
 } catch {}
 
+# Global unhandled exception handler - catches exceptions ANYWHERE in the process,
+# on any thread, including those that bypass per-handler try/catch wrappers.
+# This is a last-resort backstop, not a replacement for existing handler wrapping.
+[System.AppDomain]::CurrentDomain.add_UnhandledException({
+    param($sender, $e)
+    $exception = $e.ExceptionObject
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logEntry = "$timestamp [GLOBAL-UNHANDLED] $($exception.GetType().FullName) - $($exception.Message)`nStack: $($exception.StackTrace)"
+    try {
+        Add-Content -Path $script:CrashLogFile -Value $logEntry -ErrorAction SilentlyContinue
+    }
+    catch {
+        # If even this fails, try to write to a fallback location
+        try {
+            $fallbackLog = Join-Path $env:TEMP "NexLink-crash-fallback.log"
+            Add-Content -Path $fallbackLog -Value $logEntry -ErrorAction SilentlyContinue
+        }
+        catch {}
+    }
+    # Note: AppDomain.UnhandledException is notification-only in many cases.
+    # The process may terminate regardless of what this handler does.
+    # This handler guarantees a log write before termination, not prevention.
+})
+
 # ---------- Graceful exit signal ----------
 # release.ps1 runs unelevated, but NexLink.exe runs elevated (-requireAdmin),
 # so Stop-Process from release.ps1 fails with Access Denied and window
@@ -352,7 +376,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.43"
+$NexLinkVersion = "1.3.46"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -1113,6 +1137,7 @@ function Restart-WifiConnection {
 function Test-PortalSession {
     foreach ($testPage in $TestPageUrls) {
         try {
+            $resp = $null
             if ($script:PortalSession) {
                 if ($script:PortalSessionCreatedAt -ne [DateTime]::MinValue -and ((Get-Date) - $script:PortalSessionCreatedAt).TotalMinutes -ge 15) {
                     Add-Log "Portal session is stale (15+ minutes old). Clearing and creating fresh session."
@@ -1127,6 +1152,10 @@ function Test-PortalSession {
                 $resp = Invoke-WebRequestWithRetry -Uri $testPage.Url -Method Get -TimeoutSec 6 -MaxRetries 3 -SessionVariable 'newSession' -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
                 $script:PortalSession = $newSession
                 $script:PortalSessionCreatedAt = Get-Date
+            }
+            if (-not $resp) {
+                Add-Log "Portal connectivity check: No response received from $($testPage.Url)"
+                continue
             }
             $content = $resp.Content.Trim()
             if ($content -eq $testPage.ExpectedText) { return 'Active' }
@@ -2697,7 +2726,8 @@ $openLogBtn.Add_Click({
     try {
         if (Test-Path $LogFile) {
             [NexLink.Win32ForegroundHelper]::AllowSetForegroundWindow(-1) | Out-Null
-            Start-Process notepad.exe $LogFile
+            Start-Process explorer.exe -ArgumentList "/select,`"$LogFile`""
+            Add-Log "Opened log file location in Explorer: $LogFile"
         }
         else {
             [System.Windows.Forms.MessageBox]::Show("Log file not found.", "NexLink") | Out-Null

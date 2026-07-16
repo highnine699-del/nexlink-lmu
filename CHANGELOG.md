@@ -727,3 +727,13 @@ $sendReportBtn.Add_Click({
 - `README.txt` — version bumped to `v1.3.43`
 - SHA256 of installer: `EB2DBB4DF722C156662199679144F373DB3563E5B9D99801E314D6437D5C4226`
 - Release notes: Bug fixes and improvements
+---
+
+## v1.3.46 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\1.3.42` bumped to `1.3.46`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.46.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.46`
+- `README.txt` — version bumped to `v1.3.46`
+- SHA256 of installer: `66CC893AA444530D097760B4B6B09CEE7498EC013008A4279E2CA926C0FE42E3`
+- Release notes: Add global AppDomain unhandled-exception handler as diagnostic backstop for silent crashes; fix newSession scope bug in Test-PortalSession
