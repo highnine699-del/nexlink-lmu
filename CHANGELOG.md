@@ -707,3 +707,13 @@ $sendReportBtn.Add_Click({
 - `README.txt` — version bumped to `v1.3.39`
 - SHA256 of installer: `F0DDD44807371B5BCEB5C5B6FB5ECA8128DB80384457CFAA455613DC6F23EE4D`
 - Release notes: Cache Get-VisibleWifiNetworks within reconnect attempts; add safe log rotation at 5MB
+---
+
+## v1.3.42 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\1.3.42` bumped to `1.3.42`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.42.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.42`
+- `README.txt` — version bumped to `v1.3.42`
+- SHA256 of installer: `CF58429B5A60F9F81ED93EFA873E1C4F6667D6655B2E3ECC6408327A1E6D5722`
+- Release notes: Fix silent-close bug: replace exit calls in Get-PortalCredential with graceful return, since exit bypasses all try/catch and was killing the app on any credential file issue

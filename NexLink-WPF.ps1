@@ -94,6 +94,228 @@ function Enable-WifiAdapterIfDisabled {
     }
 }
 
+function Set-MaxWiFiPerformance {
+    [CmdletBinding()]
+    param(
+        [switch]$WhatIf
+    )
+    
+    $result = [PSCustomObject]@{
+        Timestamp           = Get-Date
+        AdapterName         = $null
+        PowerSavingDisabled = $false
+        TcpAutotuning       = 'Skipped'
+        BufferTuning        = @{}
+        Errors              = @()
+    }
+    
+    # Get the active physical WiFi adapter
+    try {
+        $adapter = Get-NetAdapter -Physical | Where-Object { $_.MediaType -eq "Native 802.11" } | Select-Object -First 1
+        if (-not $adapter) {
+            Add-Log "Set-MaxWiFiPerformance: No physical WiFi adapter found."
+            $result.Errors += "No physical WiFi adapter found"
+            return $result
+        }
+        $result.AdapterName = $adapter.Name
+        Add-Log "Set-MaxWiFiPerformance: Targeting adapter '$($adapter.Name)'"
+    }
+    catch {
+        Add-Log "Set-MaxWiFiPerformance: Failed to get WiFi adapter: $($_.Exception.Message)"
+        $result.Errors += "Failed to get WiFi adapter: $($_.Exception.Message)"
+        return $result
+    }
+    
+    # Tweak 1: Disable adapter power saving
+    try {
+        Add-Log "Set-MaxWiFiPerformance: Checking adapter power management settings..."
+        try {
+            $powerMgmt = Get-NetAdapterPowerManagement -Name $adapter.Name -ErrorAction Stop
+            if ($powerMgmt.AllowComputerToTurnOffDevice -eq 'Enabled') {
+                if (-not $WhatIf) {
+                    Set-NetAdapterPowerManagement -Name $adapter.Name -AllowComputerToTurnOffDevice Disabled -ErrorAction Stop
+                    Add-Log "Set-MaxWiFiPerformance: Disabled 'Allow computer to turn off this device to save power' on adapter '$($adapter.Name)'."
+                    $result.PowerSavingDisabled = $true
+                }
+                else {
+                    Add-Log "Set-MaxWiFiPerformance [WhatIf]: Would disable 'Allow computer to turn off this device to save power' on adapter '$($adapter.Name)'."
+                    $result.PowerSavingDisabled = 'WouldChange'
+                }
+            }
+            else {
+                Add-Log "Set-MaxWiFiPerformance: Power saving already disabled on adapter '$($adapter.Name)'."
+                $result.PowerSavingDisabled = 'AlreadyDisabled'
+            }
+        }
+        catch {
+            Add-Log "Set-MaxWiFiPerformance: Power management property not supported on adapter '$($adapter.Name)': $($_.Exception.Message)"
+            $result.PowerSavingDisabled = 'Skipped-Unsupported'
+        }
+    }
+    catch {
+        Add-Log "Set-MaxWiFiPerformance: Failed to disable power saving: $($_.Exception.Message)"
+        $result.Errors += "Failed to disable power saving: $($_.Exception.Message)"
+    }
+    
+    # Tweak 2: Reset TCP autotuning to normal
+    try {
+        Add-Log "Set-MaxWiFiPerformance: Checking TCP autotuning level..."
+        try {
+            $currentLevel = netsh interface tcp show global | Select-String "Receive Window Auto-Tuning Level"
+            if ($currentLevel -and $currentLevel -match 'normal') {
+                Add-Log "Set-MaxWiFiPerformance: TCP autotuning already set to normal."
+                $result.TcpAutotuning = 'AlreadyNormal'
+            }
+            else {
+                if (-not $WhatIf) {
+                    netsh interface tcp set global autotuninglevel=normal | Out-Null
+                    Add-Log "Set-MaxWiFiPerformance: Set TCP autotuning to normal."
+                    $result.TcpAutotuning = 'ChangedToNormal'
+                }
+                else {
+                    Add-Log "Set-MaxWiFiPerformance [WhatIf]: Would set TCP autotuning to normal."
+                    $result.TcpAutotuning = 'WouldChange'
+                }
+            }
+        }
+        catch {
+            Add-Log "Set-MaxWiFiPerformance: Failed to check/set TCP autotuning: $($_.Exception.Message)"
+            $result.TcpAutotuning = 'Failed'
+            $result.Errors += "Failed to check/set TCP autotuning: $($_.Exception.Message)"
+        }
+    }
+    catch {
+        Add-Log "Set-MaxWiFiPerformance: Failed to check TCP autotuning: $($_.Exception.Message)"
+        $result.TcpAutotuning = 'Failed'
+        $result.Errors += "Failed to check TCP autotuning: $($_.Exception.Message)"
+    }
+    
+    # Tweak 3: Interrupt moderation / buffer size tuning
+    try {
+        Add-Log "Set-MaxWiFiPerformance: Checking advanced adapter properties..."
+        try {
+            $advancedProps = Get-NetAdapterAdvancedProperty -Name $adapter.Name -ErrorAction Stop
+            $result.BufferTuning = @{}
+            
+            # InterruptModeration
+            $interruptProp = $advancedProps | Where-Object { $_.DisplayName -like '*InterruptModeration*' -or $_.RegistryKeyword -like '*InterruptModeration*' }
+            if ($interruptProp) {
+                try {
+                    if ($interruptProp.DisplayValue -ne 'Disabled') {
+                        if (-not $WhatIf) {
+                            Set-NetAdapterAdvancedProperty -Name $adapter.Name -RegistryKeyword $interruptProp.RegistryKeyword -RegistryValue 0 -ErrorAction Stop
+                            Add-Log "Set-MaxWiFiPerformance: Set InterruptModeration to Disabled on adapter '$($adapter.Name)'."
+                            $result.BufferTuning.InterruptModeration = 'ChangedToDisabled'
+                        }
+                        else {
+                            Add-Log "Set-MaxWiFiPerformance [WhatIf]: Would set InterruptModeration to Disabled on adapter '$($adapter.Name)'."
+                            $result.BufferTuning.InterruptModeration = 'WouldChange'
+                        }
+                    }
+                    else {
+                        Add-Log "Set-MaxWiFiPerformance: InterruptModeration already Disabled on adapter '$($adapter.Name)'."
+                        $result.BufferTuning.InterruptModeration = 'AlreadyDisabled'
+                    }
+                }
+                catch {
+                    Add-Log "Set-MaxWiFiPerformance: Failed to set InterruptModeration: $($_.Exception.Message)"
+                    $result.BufferTuning.InterruptModeration = 'Failed'
+                    $result.Errors += "Failed to set InterruptModeration: $($_.Exception.Message)"
+                }
+            }
+            else {
+                Add-Log "Set-MaxWiFiPerformance: InterruptModeration property not exposed by driver on adapter '$($adapter.Name)'."
+                $result.BufferTuning.InterruptModeration = 'NotExposed'
+            }
+            
+            # ReceiveBuffers
+            $receiveProp = $advancedProps | Where-Object { $_.DisplayName -like '*ReceiveBuffers*' -or $_.RegistryKeyword -like '*ReceiveBuffers*' }
+            if ($receiveProp) {
+                try {
+                    $currentValue = [int]$receiveProp.DisplayValue
+                    $maxValue = if ($receiveProp.ValidValueCount -gt 0) { [int]($receiveProp.ValidValues | Measure-Object -Maximum).Maximum } else { 2048 }
+                    $targetValue = [Math]::Min($maxValue, 2048)
+                    
+                    if ($currentValue -lt $targetValue) {
+                        if (-not $WhatIf) {
+                            Set-NetAdapterAdvancedProperty -Name $adapter.Name -RegistryKeyword $receiveProp.RegistryKeyword -RegistryValue $targetValue -ErrorAction Stop
+                            Add-Log "Set-MaxWiFiPerformance: Set ReceiveBuffers to $targetValue on adapter '$($adapter.Name)' (was $currentValue)."
+                            $result.BufferTuning.ReceiveBuffers = "ChangedTo$targetValue"
+                        }
+                        else {
+                            Add-Log "Set-MaxWiFiPerformance [WhatIf]: Would set ReceiveBuffers to $targetValue on adapter '$($adapter.Name)' (currently $currentValue)."
+                            $result.BufferTuning.ReceiveBuffers = "WouldChangeTo$targetValue"
+                        }
+                    }
+                    else {
+                        Add-Log "Set-MaxWiFiPerformance: ReceiveBuffers already at $currentValue on adapter '$($adapter.Name)'."
+                        $result.BufferTuning.ReceiveBuffers = 'AlreadyOptimal'
+                    }
+                }
+                catch {
+                    Add-Log "Set-MaxWiFiPerformance: Failed to set ReceiveBuffers: $($_.Exception.Message)"
+                    $result.BufferTuning.ReceiveBuffers = 'Failed'
+                    $result.Errors += "Failed to set ReceiveBuffers: $($_.Exception.Message)"
+                }
+            }
+            else {
+                Add-Log "Set-MaxWiFiPerformance: ReceiveBuffers property not exposed by driver on adapter '$($adapter.Name)'."
+                $result.BufferTuning.ReceiveBuffers = 'NotExposed'
+            }
+            
+            # TransmitBuffers
+            $transmitProp = $advancedProps | Where-Object { $_.DisplayName -like '*TransmitBuffers*' -or $_.RegistryKeyword -like '*TransmitBuffers*' }
+            if ($transmitProp) {
+                try {
+                    $currentValue = [int]$transmitProp.DisplayValue
+                    $maxValue = if ($transmitProp.ValidValueCount -gt 0) { [int]($transmitProp.ValidValues | Measure-Object -Maximum).Maximum } else { 2048 }
+                    $targetValue = [Math]::Min($maxValue, 2048)
+                    
+                    if ($currentValue -lt $targetValue) {
+                        if (-not $WhatIf) {
+                            Set-NetAdapterAdvancedProperty -Name $adapter.Name -RegistryKeyword $transmitProp.RegistryKeyword -RegistryValue $targetValue -ErrorAction Stop
+                            Add-Log "Set-MaxWiFiPerformance: Set TransmitBuffers to $targetValue on adapter '$($adapter.Name)' (was $currentValue)."
+                            $result.BufferTuning.TransmitBuffers = "ChangedTo$targetValue"
+                        }
+                        else {
+                            Add-Log "Set-MaxWiFiPerformance [WhatIf]: Would set TransmitBuffers to $targetValue on adapter '$($adapter.Name)' (currently $currentValue)."
+                            $result.BufferTuning.TransmitBuffers = "WouldChangeTo$targetValue"
+                        }
+                    }
+                    else {
+                        Add-Log "Set-MaxWiFiPerformance: TransmitBuffers already at $currentValue on adapter '$($adapter.Name)'."
+                        $result.BufferTuning.TransmitBuffers = 'AlreadyOptimal'
+                    }
+                }
+                catch {
+                    Add-Log "Set-MaxWiFiPerformance: Failed to set TransmitBuffers: $($_.Exception.Message)"
+                    $result.BufferTuning.TransmitBuffers = 'Failed'
+                    $result.Errors += "Failed to set TransmitBuffers: $($_.Exception.Message)"
+                }
+            }
+            else {
+                Add-Log "Set-MaxWiFiPerformance: TransmitBuffers property not exposed by driver on adapter '$($adapter.Name)'."
+                $result.BufferTuning.TransmitBuffers = 'NotExposed'
+            }
+            
+            if ($result.BufferTuning.Count -gt 0) {
+                Add-Log "Set-MaxWiFiPerformance: Buffer tuning complete. Some changes may require reconnect to take effect."
+            }
+        }
+        catch {
+            Add-Log "Set-MaxWiFiPerformance: Failed to enumerate advanced properties: $($_.Exception.Message)"
+            $result.Errors += "Failed to enumerate advanced properties: $($_.Exception.Message)"
+        }
+    }
+    catch {
+        Add-Log "Set-MaxWiFiPerformance: Failed to check advanced properties: $($_.Exception.Message)"
+        $result.Errors += "Failed to check advanced properties: $($_.Exception.Message)"
+    }
+    
+    Add-Log "Set-MaxWiFiPerformance: Complete. Result: $($result.Errors.Count) error(s)."
+    return $result
+}
+
 function Get-CurrentSSID {
     try {
         $result = netsh wlan show interfaces 2>$null
@@ -130,7 +352,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.39"
+$NexLinkVersion = "1.3.42"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -163,8 +385,22 @@ $TrustedNetworks = @(
     'csis|eng workshop|1|31'
 )
 $ScriptDir = Split-Path -Path ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) -Parent
-$CredFile = Join-Path $ScriptDir "lmu_portal.cred"
-$LogFile = Join-Path $ScriptDir "lmu_autoconnect.log"
+$script:DataDir = Join-Path $env:LOCALAPPDATA "NexLink"
+$CredFile = Join-Path $script:DataDir "lmu_portal.cred"
+$LogFile = Join-Path $script:DataDir "lmu_autoconnect.log"
+
+# Ensure data directory exists
+try {
+    if (-not (Test-Path $script:DataDir)) {
+        New-Item -ItemType Directory -Path $script:DataDir -Force | Out-Null
+    }
+}
+catch {
+    # If we can't create the data directory, fall back to script directory
+    $script:DataDir = $ScriptDir
+    $CredFile = Join-Path $ScriptDir "lmu_portal.cred"
+    $LogFile = Join-Path $ScriptDir "lmu_autoconnect.log"
+}
 
 $script:wifiFailCount = 0
 $script:portalFailCount = 0
@@ -227,8 +463,8 @@ function Get-PortalCredential {
     if (-not (Test-Path $CredFile)) {
         Add-Log "No credential file found at '$CredFile' - prompting for portal login."
         if (-not (Save-PortalCredential)) {
-            [System.Windows.Forms.MessageBox]::Show("No credentials entered. Exiting.", "NexLink") | Out-Null
-            exit
+            Add-Log "No credentials entered. User cancelled credential entry."
+            return $null
         }
     }
 
@@ -237,14 +473,12 @@ function Get-PortalCredential {
     }
     catch {
         Add-Log "Credential file is unreadable or corrupt: $($_.Exception.Message)"
-        [System.Windows.Forms.MessageBox]::Show("Credential file is unreadable or corrupt. Delete $CredFile and run again.", "NexLink") | Out-Null
-        exit
+        return $null
     }
 
     if (-not $data.Username -or -not $data.Password) {
         Add-Log "Credential file is missing username or password field."
-        [System.Windows.Forms.MessageBox]::Show("Credential file is missing required values.", "NexLink") | Out-Null
-        exit
+        return $null
     }
 
     try {
@@ -252,8 +486,7 @@ function Get-PortalCredential {
     }
     catch {
         Add-Log "Saved password could not be decrypted (DPAPI mismatch - different user/machine?): $($_.Exception.Message)"
-        [System.Windows.Forms.MessageBox]::Show("Saved password could not be decrypted. Delete $CredFile and create it again.", "NexLink") | Out-Null
-        exit
+        return $null
     }
 
     $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePass)
@@ -912,6 +1145,10 @@ function Test-PortalSession {
 
 function Invoke-PortalLogin {
     $cred = Get-PortalCredential
+    if (-not $cred) {
+        Add-Log "Invoke-PortalLogin: No credentials available (Get-PortalCredential returned null)."
+        throw "No credentials available"
+    }
     $body = @{ dst = ""; popup = "true"; username = $cred.Username; password = $cred.Password }
     $loginUrls = @($LoginUrl, ($LoginUrl -replace '^https://', 'http://'))
     foreach ($url in $loginUrls) {
@@ -1734,6 +1971,7 @@ $trayIcon.Visible = $true
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $menuShow = $trayMenu.Items.Add("Show Window")
 $menuDisconnect = $trayMenu.Items.Add("Disconnect")
+$menuBoost = $trayMenu.Items.Add("Boost WiFi Performance")
 $trayMenu.Items.Add("-") | Out-Null
 $menuExit = $trayMenu.Items.Add("Exit")
 $trayIcon.ContextMenuStrip = $trayMenu
@@ -1787,6 +2025,19 @@ $menuDisconnect.Add_Click({
     }
     catch {
         $errorMsg = "[HANDLER-CRASH] menuDisconnect.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
+        try { Add-Log $errorMsg } catch {}
+        try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
+    }
+})
+
+$menuBoost.Add_Click({
+    try {
+        Add-Log "Boost WiFi Performance triggered via tray menu."
+        $result = Set-MaxWiFiPerformance
+        Add-Log "Boost WiFi Performance result: PowerSavingDisabled=$($result.PowerSavingDisabled), TcpAutotuning=$($result.TcpAutotuning), BufferTuning=$($result.BufferTuning.Count) properties tuned."
+    }
+    catch {
+        $errorMsg = "[HANDLER-CRASH] menuBoost.Add_Click: $($_.Exception.GetType().FullName) - $($_.Exception.Message)"
         try { Add-Log $errorMsg } catch {}
         try { Add-Content -Path $script:CrashLogFile -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $errorMsg`nStack: $($_.ScriptStackTrace)" -ErrorAction SilentlyContinue } catch {}
     }
@@ -2075,6 +2326,7 @@ $window.Add_Loaded({
         
         # Auto-enable Wi-Fi adapter if it's disabled on startup
         Enable-WifiAdapterIfDisabled | Out-Null
+        # Pre-load credentials to prompt user if needed (non-blocking - continues even if fails)
         Get-PortalCredential | Out-Null
         Update-KnownSSID | Out-Null
         $currentWifiState = Get-CurrentWifiState
