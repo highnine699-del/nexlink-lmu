@@ -658,6 +658,16 @@ $sendReportBtn.Add_Click({
 - Release notes: Redact portal username from error report logs
 ---
 
+## v1.3.36 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.36`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.36.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.36`
+- `README.txt` — version bumped to `v1.3.36`
+- SHA256 of installer: `90E00299E2B188D4AAA4DAEE0DC1C8080F722D7B577ED55B0E1E4BB777718EA6`
+- Release notes: Auto-enable wifi adapter on startup/wake
+---
+
 ## Pending manual actions (not in code)
 
 1. **Create OG image** — `docs/og-image.png` is currently a 256×256 icon. Replace with 1200×630 image for proper WhatsApp/Telegram link preview cards.

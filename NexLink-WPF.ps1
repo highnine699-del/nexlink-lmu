@@ -62,10 +62,35 @@ if (-not $acquired) {
 # ---------- Backend Functions (UNCHANGED from NexLink-GUI.ps1) ----------
 function Get-WifiAdapter {
     try {
-        return Get-NetAdapter | Where-Object { $_.Status -ne 'Disabled' -and $_.InterfaceDescription -match 'Wi-Fi|Wireless' } | Select-Object -First 1
+        return Get-NetAdapter | Where-Object { $_.InterfaceDescription -match 'Wi-Fi|Wireless' } | Select-Object -First 1
     }
     catch {
         return $null
+    }
+}
+
+function Enable-WifiAdapterIfDisabled {
+    $adapter = Get-WifiAdapter
+    if (-not $adapter) {
+        Add-Log "No Wi-Fi adapter found on this system."
+        return $false
+    }
+    
+    if ($adapter.Status -eq 'Disabled') {
+        try {
+            Add-Log "Wi-Fi adapter '$($adapter.Name)' is disabled. Enabling automatically..."
+            Enable-NetAdapter -Name $adapter.Name -Confirm:$false -ErrorAction Stop
+            Start-Sleep -Seconds 2
+            Add-Log "Wi-Fi adapter '$($adapter.Name)' enabled successfully."
+            return $true
+        }
+        catch {
+            Add-Log "Failed to enable Wi-Fi adapter '$($adapter.Name)': $($_.Exception.Message)"
+            return $false
+        }
+    }
+    else {
+        return $false
     }
 }
 
@@ -105,7 +130,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.35"
+$NexLinkVersion = "1.3.36"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -1761,6 +1786,8 @@ $powerModeChangedHandler = Register-ObjectEvent -InputObject ([Microsoft.Win32.S
     try {
         if ($EventArgs.Mode -eq [Microsoft.Win32.PowerModes]::Resume) {
             Add-Log "System resumed from sleep."
+            # Auto-enable Wi-Fi adapter if it's disabled after wake
+            Enable-WifiAdapterIfDisabled | Out-Null
             Invoke-ImmediateConnectivityCheck
         }
     }
@@ -1962,6 +1989,9 @@ $window.Add_Loaded({
         Add-Log "===== Session starting (NexLink v$NexLinkVersion) ====="
         Add-Log "===== Monitor started. Checking every $($CheckIntervalMs / 1000)s. ====="
         Add-Log "Version=$NexLinkVersion OS='$osInfo' Adapter='$adapterDesc'"
+        
+        # Auto-enable Wi-Fi adapter if it's disabled on startup
+        Enable-WifiAdapterIfDisabled | Out-Null
         Get-PortalCredential | Out-Null
         Update-KnownSSID | Out-Null
         $currentWifiState = Get-CurrentWifiState

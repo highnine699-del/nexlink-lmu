@@ -1,4 +1,4 @@
-NexLink v1.3.35
+NexLink v1.3.36
 
 This installer installs the NexLink Wi-Fi monitor application (LMU campus edition).
 
@@ -47,6 +47,10 @@ Status Indicators:
 - Red-pink orb: Error or offline
 
 If you need support, visit https://github.com/highnine699-del/nexlink-updates for documentation and to report issues.
+
+Troubleshooting:
+- If the app closes unexpectedly, check the crash log at %LOCALAPPDATA%\NexLink\crash.log for error details.
+- The crash log contains detailed error information including exception types, messages, and stack traces.
 
 Developer Notes:
 - Use release.ps1 to publish a new version. recompile_wpf.ps1 is for local testing only and does not create a GitHub release.
