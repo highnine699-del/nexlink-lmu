@@ -130,7 +130,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.36"
+$NexLinkVersion = "1.3.37"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -919,6 +919,13 @@ function Invoke-PortalLogin {
                 $resp = Invoke-WebRequestWithRetry -Uri $url -Method Post -Body $body -TimeoutSec 10 -MaxRetries 3 -WebSession $script:PortalSession -Headers @{ 'Cache-Control' = 'no-cache'; Pragma = 'no-cache' }
             }
             $content = $resp.Content
+            
+            # Check for invalid credentials error - this is not retryable
+            if ($content -match 'invalid username or password') {
+                Add-Log "Portal rejected credentials: invalid username or password. Prompting for re-entry."
+                throw "INVALID_CREDENTIALS"
+            }
+            
             if ($resp.BaseResponse.ResponseUri -match '/login' -or $content -match "Landmark University Hotspot Login" -or $content -match 'action="https://internet\.lmu\.edu\.ng/login"') {
                 if ($url -eq $loginUrls[-1]) { throw "Portal login page returned after submitting credentials." }
                 continue
@@ -1904,11 +1911,30 @@ $timer.Add_Tick({
                     $script:PortalRetryAfter = [DateTime]::MinValue
                 }
                 catch {
-                    $script:portalFailCount++
-                    $cooldownSeconds = [Math]::Min($PortalLoginRetryCooldownSec, 10 + ($script:portalFailCount * 5))
-                    $script:PortalRetryAfter = $now.AddSeconds($cooldownSeconds)
-                    Add-Log "Portal login FAILED ($script:portalFailCount). Retrying in $cooldownSeconds seconds: $($_.Exception.Message)"
-                    Set-Status "Portal login error" "Error"
+                    # Check for invalid credentials specifically
+                    if ($_.Exception.Message -eq 'INVALID_CREDENTIALS') {
+                        Add-Log "Invalid credentials detected - prompting for re-entry."
+                        Set-Status "Invalid credentials - please re-enter" "Error"
+                        # Trigger credential re-entry flow
+                        if (Save-PortalCredential) {
+                            $script:PortalSession = $null
+                            $script:PortalSessionCreatedAt = [DateTime]::MinValue
+                            Add-Log "Credentials updated. Will retry login on next check."
+                        }
+                        else {
+                            Add-Log "Credential re-entry was cancelled by user."
+                        }
+                        $script:portalFailCount = 0
+                        $script:PortalRetryAfter = [DateTime]::MinValue
+                    }
+                    else {
+                        # Normal retry logic for other failures
+                        $script:portalFailCount++
+                        $cooldownSeconds = [Math]::Min($PortalLoginRetryCooldownSec, 10 + ($script:portalFailCount * 5))
+                        $script:PortalRetryAfter = $now.AddSeconds($cooldownSeconds)
+                        Add-Log "Portal login FAILED ($script:portalFailCount). Retrying in $cooldownSeconds seconds: $($_.Exception.Message)"
+                        Set-Status "Portal login error" "Error"
+                    }
                 }
             }
         }

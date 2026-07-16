@@ -677,3 +677,13 @@ $sendReportBtn.Add_Click({
 ---
 
 *Last updated: July 2026. Covers commits `ce3ea56` (v1.3.10) through `4faa4c6` (v1.3.16 — current HEAD).*
+---
+
+## v1.3.37 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.37`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.37.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.37`
+- `README.txt` — version bumped to `v1.3.37`
+- SHA256 of installer: `99125C78B2D5EE40D282FD7708A29C59D390BF45DBBB84EBCDB41484CB14ACD3`
+- Release notes: Detect invalid portal credentials and prompt for re-entry instead of retrying
