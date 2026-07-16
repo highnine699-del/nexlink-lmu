@@ -697,3 +697,13 @@ $sendReportBtn.Add_Click({
 - `README.txt` — version bumped to `v1.3.38`
 - SHA256 of installer: `F6E81733A1A2B419B6D01C67C208A917440C7BA569CF4F4943A6D3BB0F6E488F`
 - Release notes: Detect invalid credentials and traffic-limit-reached portal states; stop futile retries and surface honest status to the user
+---
+
+## v1.3.39 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.39`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.39.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.39`
+- `README.txt` — version bumped to `v1.3.39`
+- SHA256 of installer: `F0DDD44807371B5BCEB5C5B6FB5ECA8128DB80384457CFAA455613DC6F23EE4D`
+- Release notes: Cache Get-VisibleWifiNetworks within reconnect attempts; add safe log rotation at 5MB

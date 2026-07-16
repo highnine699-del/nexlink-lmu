@@ -130,7 +130,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.38"
+$NexLinkVersion = "1.3.39"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -750,7 +750,8 @@ function Connect-ToWifiNetwork {
 function Test-WifiSwitchNeeded {
     param(
         [string]$TargetSsid,
-        [psobject]$CurrentWifiState
+        [psobject]$CurrentWifiState,
+        [array]$VisibleNetworks = $null
     )
     if (-not $TargetSsid) { return $false }
     if (-not (Test-TrustedNetwork -Ssid $TargetSsid)) { return $false }
@@ -760,7 +761,12 @@ function Test-WifiSwitchNeeded {
 
     $currentSignal = [int]$CurrentWifiState.Signal
     $targetSignal = 0
-    $targetNetwork = Get-VisibleWifiNetworks | Where-Object { $_.SSID -eq $TargetSsid } | Select-Object -First 1
+    if ($VisibleNetworks) {
+        $targetNetwork = $VisibleNetworks | Where-Object { $_.SSID -eq $TargetSsid } | Select-Object -First 1
+    }
+    else {
+        $targetNetwork = Get-VisibleWifiNetworks | Where-Object { $_.SSID -eq $TargetSsid } | Select-Object -First 1
+    }
     if ($targetNetwork -and $null -ne $targetNetwork.Signal) { $targetSignal = [int]$targetNetwork.Signal }
 
     if ($targetSignal -ge ($currentSignal + 5)) { return $true }
@@ -782,7 +788,7 @@ function Restart-WifiConnection {
         if (-not $targetSsid) { $targetSsid = $script:LastKnownSSID }
         if (-not $targetSsid) { $targetSsid = $currentWifiState.SSID }
         Add-Log "Restart-WifiConnection: current='$($currentWifiState.SSID)' ($($currentWifiState.Signal)%), target='$targetSsid'"
-        if ($targetSsid -and -not (Test-WifiSwitchNeeded -TargetSsid $targetSsid -CurrentWifiState $currentWifiState)) {
+        if ($targetSsid -and -not (Test-WifiSwitchNeeded -TargetSsid $targetSsid -CurrentWifiState $currentWifiState -VisibleNetworks $visibleNetworks)) {
             Add-Log "Restart-WifiConnection: switch not needed/allowed right now (cooldown or same network), skipping."
             return $currentWifiState.SSID
         }
@@ -1181,6 +1187,8 @@ $minimizeBtn.Add_Click({
 # ---------- Logging Functions ----------
 $script:logLines = @()
 $script:LogLock = New-Object Object
+$script:LogWriteCounter = 0
+$script:MaxLogSizeBytes = 5MB
 
 function Add-Log($text) {
     $timestamp = Get-Date -Format 'HH:mm:ss'
@@ -1192,6 +1200,40 @@ function Add-Log($text) {
     finally {
         [System.Threading.Monitor]::Exit($script:LogLock)
     }
+    
+    # Check log size every 100th write to avoid disk I/O on hot path
+    $script:LogWriteCounter++
+    if ($script:LogWriteCounter -ge 100) {
+        $script:LogWriteCounter = 0
+        try {
+            if (Test-Path $LogFile) {
+                $fileSize = (Get-Item $LogFile -ErrorAction SilentlyContinue).Length
+                if ($fileSize -gt $script:MaxLogSizeBytes) {
+                    # Safe rotation: read -> write temp -> replace
+                    try {
+                        $content = Get-Content -Path $LogFile -ErrorAction Stop
+                        # Keep last 80% of lines when exceeding 5MB to preserve most history
+                        # This maintains ~86 hours of history at 5MB cap (not just 5000 lines)
+                        $keepCount = [Math]::Max(5000, [Math]::Floor($content.Count * 0.8))
+                        $linesToKeep = $content[-$keepCount..-1]
+                        $tempFile = $LogFile + ".tmp"
+                        $rotationLine = "[$(Get-Date -Format 'HH:mm:ss')] [LOG ROTATED] Previous entries truncated - log exceeded 5MB"
+                        $linesToKeep = @($rotationLine) + $linesToKeep
+                        Set-Content -Path $tempFile -Value $linesToKeep -Encoding UTF8 -ErrorAction Stop
+                        Move-Item -Path $tempFile -Destination $LogFile -Force -ErrorAction Stop
+                    }
+                    catch {
+                        # If rotation fails, skip this cycle and try again next time
+                        # Log nothing to avoid infinite loop on log failure
+                    }
+                }
+            }
+        }
+        catch {
+            # Silently fail size check - don't block normal logging
+        }
+    }
+    
     try {
         $logDir = Split-Path -Parent $LogFile
         if ($logDir -and -not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
