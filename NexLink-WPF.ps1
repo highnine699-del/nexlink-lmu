@@ -130,7 +130,7 @@ function Get-VisibleWifiNetworks {
 }
 
 # ---------- Settings ----------
-$NexLinkVersion = "1.3.37"
+$NexLinkVersion = "1.3.38"
 $UpdateManifestUrl = "https://raw.githubusercontent.com/highnine699-del/nexlink-updates/main/latest.json"
 $UpdateCheckEnabled = $true
 $PingTargets = @("8.8.8.8", "1.1.1.1")
@@ -924,6 +924,12 @@ function Invoke-PortalLogin {
             if ($content -match 'invalid username or password') {
                 Add-Log "Portal rejected credentials: invalid username or password. Prompting for re-entry."
                 throw "INVALID_CREDENTIALS"
+            }
+            
+            # Check for traffic limit reached - this is not retryable
+            if ($content -match 'traffic limit reached') {
+                Add-Log "Portal reports traffic limit reached. Data allowance exhausted - reconnection will not resolve this."
+                throw "TRAFFIC_LIMIT_REACHED"
             }
             
             if ($resp.BaseResponse.ResponseUri -match '/login' -or $content -match "Landmark University Hotspot Login" -or $content -match 'action="https://internet\.lmu\.edu\.ng/login"') {
@@ -1926,6 +1932,15 @@ $timer.Add_Tick({
                         }
                         $script:portalFailCount = 0
                         $script:PortalRetryAfter = [DateTime]::MinValue
+                    }
+                    # Check for traffic limit reached - not retryable by app
+                    elseif ($_.Exception.Message -eq 'TRAFFIC_LIMIT_REACHED') {
+                        Add-Log "Traffic limit reached. Data allowance exhausted - reconnection will not resolve this."
+                        Set-Status "Data limit reached" "Error"
+                        # Set long cooldown (30 minutes) - traffic limits typically reset on a schedule
+                        $script:PortalRetryAfter = $now.AddMinutes(30)
+                        $script:portalFailCount = 0
+                        Add-Log "Will re-check portal status in 30 minutes."
                     }
                     else {
                         # Normal retry logic for other failures

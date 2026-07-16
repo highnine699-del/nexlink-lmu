@@ -687,3 +687,13 @@ $sendReportBtn.Add_Click({
 - `README.txt` — version bumped to `v1.3.37`
 - SHA256 of installer: `99125C78B2D5EE40D282FD7708A29C59D390BF45DBBB84EBCDB41484CB14ACD3`
 - Release notes: Detect invalid portal credentials and prompt for re-entry instead of retrying
+---
+
+## v1.3.38 release (2026-07-16)
+
+- `NexLink-WPF.ps1` — `\` bumped to `1.3.38`
+- `NexLink-installer.iss` — `AppVersion` bumped to `1.3.38.0`
+- `docs/index.html` — fallback versions bumped to `v1.3.38`
+- `README.txt` — version bumped to `v1.3.38`
+- SHA256 of installer: `F6E81733A1A2B419B6D01C67C208A917440C7BA569CF4F4943A6D3BB0F6E488F`
+- Release notes: Detect invalid credentials and traffic-limit-reached portal states; stop futile retries and surface honest status to the user
